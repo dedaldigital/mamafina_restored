@@ -571,20 +571,12 @@ class AirtableService {
     async obtenerFichaAlumna(chatId) {
         try {
             const records = await this.base('Alumnas_Comunidad').select({
-                filterByFormula: `{Telegram_ID} = '${chatId}'`,
+                filterByFormula: `{Telegram_ID} = '${String(chatId)}'`, // Forzamos String
                 maxRecords: 1
             }).firstPage();
             
-            if (records.length > 0) {
-                // Devolvemos el ID de la fila (rec...) + los campos
-                return {
-                    id: records[0].id, // <--- ESTO ES LO QUE NECESITAMOS PARA EL UPDATE
-                    ...records[0].fields
-                };
-            }
-            return null;
+            return records.length > 0 ? { id: records[0].id, ...records[0].fields } : null;
         } catch (e) {
-            console.error("Error buscando ficha:", e.message);
             return null;
         }
     }
