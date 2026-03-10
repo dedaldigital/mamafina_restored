@@ -588,19 +588,18 @@ module.exports = async function handler(req, res) {
             if (data === "CLI_ACADEMIA") {
                 const botones = [
                     [{ text: "📝 Actualizar mi Labor", callback_data: "ACAD_UPDATE_LABOR" }],
-                    [{ text: "📓 Ver mis Notas", callback_data: "ACAD_MI_FICHA" }],
-                    [{ text: "🧶 Grupo Clases Crochet", url: "https:https://chat.whatsapp.com/C5ZLwuNwAMWCh4MGZBI7RY?mode=gi_t" }],
-                    [{ text: "📢 Canal de Difusión Mamafina", url: "https://chat.whatsapp.com/C5ZLwuNwAMWCh4MGZBI7RY?mode=gi_t" }],
                     [{ text: "📓 Mi Ficha de Alumna", callback_data: "ACAD_MI_FICHA" }],
+                    [{ text: "📅 Ver Clases y Huecos", callback_data: "ACAD_VER_CLASES" }], // Añadido para consistencia
+                    [{ text: "🧶 Grupo Clases Crochet", url: "https://chat.whatsapp.com/C5ZLwuNwAMWCh4MGZBI7RY" }],
                     [{ text: "🏠 Volver al Inicio", callback_data: "CLI_INICIO" }]
                 ];
                 
                 await editarMensajeConBotones(chatId, messageId, 
-                    "¡Claro que sí, cielo! Aquí tienes los accesos directos a nuestros grupos. ✨\n\n" +
-                    "Únete para no perderte ningún patrón y estar al día de las novedades del taller.", 
+                    "¡Qué alegría verte por aquí, primor! ✨ ¿Quieres mirar tus notas de costura, actualizar tu labor o unirte a nuestros grupos?", 
                     botones);
+                return res.status(200).json({ ok: true });
             }
-
+            
             // Iniciador del cuestionario
             else if (data === "ACAD_UPDATE_LABOR") {
                 const meta = { step: "ACAD_ESP_PROYECTO", chatId };
