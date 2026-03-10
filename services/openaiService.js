@@ -289,5 +289,25 @@ class OpenAIService {
       return descripcionLarga;
     }
   }
+
+  async detectarIntencionPortfolio(mensaje) {
+    try {
+        const response = await this.openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{
+                role: "system",
+                content: "Eres un clasificador de intenciones para una mercería. Si el usuario pide VER fotos, ejemplos, o trabajos anteriores, responde únicamente con la categoría: 'ropa', 'bolsos', 'bebes', 'otros' o 'todo'. Si no pide ver trabajos, responde 'NADA'."
+            }, {
+                role: "user",
+                content: mensaje
+            }],
+            temperature: 0
+        });
+        return response.choices[0].message.content.trim().toLowerCase();
+    } catch (e) {
+        return "nada";
+    }
+}
 }
 module.exports = new OpenAIService();
+

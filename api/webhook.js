@@ -217,7 +217,19 @@ module.exports = async function handler(req, res) {
                 const fileJson = await fileRes.json();
                 const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileJson.result.file_path}`;
                 
-              
+                // ✨ INSERCIÓN ESTRATÉGICA: Si es un trabajo, saltamos el análisis de stock
+                if (tipo === "FOTO_TRABAJO") {
+                    await enviarMensajeSimple(chatId, "✨ **Preparando ficha para el Archivador...**");
+                    const metadataInitial = { 
+                        uniqueId, 
+                        fotoId,
+                        tipo: "TRABAJO", 
+                        step: "ESP_NOMBRE_TRABAJO" 
+                    };
+                    await enviarMensajeConReply(chatId, `🎨 ¡Qué bonito trabajo! ¿Qué **Nombre** le ponemos a este proyecto?\n\n(DATOS_IA: ${JSON.stringify(metadataInitial)})`);
+                    return res.status(200).json({ ok: true });
+                }
+
                 let promptAnalizado = "";
 
                 if (tipo === "FOTO_TELA") {
@@ -240,10 +252,15 @@ module.exports = async function handler(req, res) {
                     step: "ESPERANDO_NOMBRE" 
                 };
 
+                
+                
+
               
                 await enviarMensajeConReply(chatId, `✅ Análisis:\n¿Qué **Nombre** le ponemos?\n\n(DATOS_IA: ${JSON.stringify(metadataInitial)})`);
                 return res.status(200).json({ ok: true }); // ✨ El recibo para que Telegram no repita
             } 
+
+            
        
             // BOTONOES DE INVENTARIO
 
@@ -451,29 +468,101 @@ module.exports = async function handler(req, res) {
 
             // CATÁLOGO DE TELAS 
             else if (data === "CLI_TELAS") {
-                const registros = await airtableService.obtenerCatalogoPublico();
-                if (!registros || registros.length === 0) {
-                    await enviarMensajeSimple(chatId, "¡Ay! Mi baúl de telas está tímido hoy, primor. ✨");
-                } else {
-                    for (const r of registros) {
-                        let fotoUrl = r.fields?.Foto;
-                        if (Array.isArray(fotoUrl) && fotoUrl.length > 0) fotoUrl = fotoUrl[0].url;
-            
-                        if (fotoUrl) {
-                            const nombre = r.fields.Articulo || "Tela de la casa";
-                            const desc = r.fields.Estampado || "Un diseño precioso para tu próximo encargo.";
-                            await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendPhoto`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ chat_id: chatId, photo: fotoUrl, caption: `🧵 **${nombre}**\n✨ ${desc}`, parse_mode: 'Markdown' })
-                            });
-                        }
-                    }
-                }
-                await enviarMensajeConBotones(chatId, "¿Te ayudo con otra cosita?", [[{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]]);
+                await responderBoton(callback_query.id);
+                const mensaje = "✨ *¡Bienvenida a nuestro baúl de labores!*\n\nAquí puedes ver fotos de los trabajos que hemos terminado en el taller. ¿Qué te gustaría cotillear hoy, corazón?";
+                
+                const botones = [
+                    [{ text: "👗 Ropa", callback_data: "VER_TRABAJOS|ropa" }, { text: "👜 Bolsos", callback_data: "VER_TRABAJOS|bolsos" }],
+                    [{ text: "👶 Bebés", callback_data: "VER_TRABAJOS|bebes" }, { text: "✨ Otros", callback_data: "VER_TRABAJOS|otros" }],
+                    [{ text: "🌈 Ver Todo", callback_data: "VER_TRABAJOS|todo" }],
+                    [{ text: "⬅️ Volver al Menú Principal", callback_data: "CLI_INICIO" }] // RETORNO GARANTIZADO
+                ];
+                
+                await enviarMensajeConBotones(chatId, mensaje, botones);
                 return res.status(200).json({ ok: true });
             }
+
+            //CATÁLOGO DE TRABAJOS 
+
+            else if (data.startsWith("VER_TRABAJOS|")) {
+                const categoria = data.split('|')[1];
+                await responderBoton(callback_query.id);
+                
+                const trabajos = await airtableService.buscarTrabajosPortfolio(categoria);
+                
+                if (trabajos.length === 0) {
+                    const mensajeVacio = `¡Ay! Pues de *${categoria}* no tengo fotos ahora mismo, pero seguro que podemos hacer algo precioso.`;
+                    const botonesRetorno = [[{ text: "⬅️ Volver", callback_data: "CLI_TELAS" }]];
+                    await enviarMensajeConBotones(chatId, mensajeVacio, botonesRetorno);
+                } else {
+                    // Preparamos el álbum (MediaGroup)
+                    const mediaGroup = trabajos.map(t => ({
+                        type: 'photo',
+                        media: t.url,
+                        caption: t.caption
+                    }));
             
+                    // Enviamos las fotos
+                    await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMediaGroup`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ chat_id: chatId, media: mediaGroup })
+                    });
+                    
+                    // MENSAJE DE CIERRE CON BOTÓN DE RETORNO
+                    // Esto es vital para que el usuario pueda seguir navegando después de ver las fotos
+                    const mensajeCierre = "Espero que te gusten, cielo. ✨\n¿Quieres ver algo más o prefieres volver al inicio?";
+                    const botonesCierre = [
+                        [{ text: "🔍 Ver otra categoría", callback_data: "CLI_TELAS" }],
+                        [{ text: "🏠 Volver al Inicio", callback_data: "CLI_INICIO" }]
+                    ];
+                    
+                    await enviarMensajeConBotones(chatId, mensajeCierre, botonesCierre);
+                }
+                return res.status(200).json({ ok: true });
+            }
+
+            if (data.startsWith("CAT_TRAB|")) {
+                const [, categoria, uniqueId] = data.split('|');
+                const metaRaw = cacheFotos[uniqueId + "_meta"];
+                
+                if (!metaRaw) {
+                    await enviarMensajeSimple(chatId, "❌ La sesión ha expirado, por favor sube la foto de nuevo.");
+                    return res.status(200).json({ ok: true });
+                }
+            
+                const metadata = JSON.parse(metaRaw);
+                await editarMensaje(chatId, callback_query.message.message_id, `⏳ Procesando imagen para la categoría *${categoria}*...`);
+            
+                try {
+                    // 1. Descargar de Telegram y subir a ImgBB para tener URL permanente
+                    const fileRes = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/getFile?file_id=${metadata.fotoId}`);
+                    const fileJson = await fileRes.json();
+                    const urlTele = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileJson.result.file_path}`;
+                    
+                    const urlFinal = await imgbbService.subirAFotoUsuario(urlTele);
+            
+                    // 2. Crear el registro en la nueva tabla de Airtable
+                    await airtableService.base('Trabajos_Realizados').create([{
+                        fields: {
+                            "Nombre_Proyecto": metadata.nombre,
+                            "Categoria": categoria,
+                            "Foto_Final": [{ url: urlFinal }] // Airtable acepta objetos con URL en campos de adjunto
+                        }
+                    }]);
+            
+                    await enviarMensajeSimple(chatId, `✅ **¡Proyecto archivado con éxito!**\n🌟 *${metadata.nombre}* ya está disponible en el catálogo de *${categoria}* para los clientes.`);
+                    
+                    // Limpiamos caché
+                    delete cacheFotos[uniqueId + "_meta"];
+            
+                } catch (e) {
+                    console.error("💥 Error guardando trabajo:", e.message);
+                    await enviarMensajeSimple(chatId, "❌ Hubo un problema al guardar la foto en el archivador.");
+                }
+                return res.status(200).json({ ok: true });
+            }
+
             // PEDIDO ESPECÍFICO (INTERÉS)
 
             else if (data.startsWith("INT_PEDIDO_")) {
@@ -511,6 +600,7 @@ module.exports = async function handler(req, res) {
                 const botones = [
                     [{ text: "🧵 Tela", callback_data: `FOTO_TELA|${uniqueId}` }],
                     [{ text: "👗 Producto", callback_data: `FOTO_PROD|${uniqueId}` }],
+                    [{ text: "✨ Trabajo Realizado", callback_data: `FOTO_TRABAJO|${uniqueId}` }], // NUEVA OPCIÓN
                     [{ text: "🔘 Mercería", callback_data: `FOTO_MERC|${uniqueId}` }]
                 ];
                 await enviarMensajeConBotones(chatId, "📸 ¿Dónde guardamos esta imagen?", botones);
@@ -525,6 +615,8 @@ module.exports = async function handler(req, res) {
         // ---------------------------------------------------------
         // BLOQUE C: RECEPCIÓN DE MENSAJES DE TEXTO
         // ---------------------------------------------------------
+        
+        
         if (message && message.text) {
             const textoRecibido = message.text;
             const textoMinus = textoRecibido.toLowerCase();
@@ -649,6 +741,25 @@ module.exports = async function handler(req, res) {
                     const metadata = extraerMetadata(replyText);
                     if (metadata && metadata.step) {
                         const paso = metadata.step;
+
+                        if (metadata.step === "ESP_NOMBRE_TRABAJO") {
+                            metadata.nombre = textoRecibido;
+                            metadata.step = "ESP_CATEGORIA_TRABAJO";
+                            
+                            // Botones 
+                            const botonesCat = [
+                                [{ text: "👗 Ropa", callback_data: `CAT_TRAB|Ropa|${metadata.uniqueId}` }, 
+                                { text: "👜 Bolsos", callback_data: `CAT_TRAB|Bolsos|${metadata.uniqueId}` }],
+                                [{ text: "👶 Bebes", callback_data: `CAT_TRAB|Bebes|${metadata.uniqueId}` }, 
+                                { text: "✨ Otros", callback_data: `CAT_TRAB|Otros|${metadata.uniqueId}` }]
+                            ];
+
+                            // Guardamos temporalmente en la "mochila" de cache para el callback
+                            cacheFotos[metadata.uniqueId + "_meta"] = JSON.stringify(metadata);
+                    
+                            await enviarMensajeConBotones(chatId, `Perfecto: "${metadata.nombre}". ¿En qué categoría lo guardamos?`, botonesCat);
+                            return res.status(200).json({ ok: true });
+                        }
 
                         if (paso === "ESPERANDO_NOMBRE") {
                             metadata.nombre = textoRecibido;
@@ -1000,7 +1111,13 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
             //CIERRE ESADMIN 
-            else { // BLOQUE CLIENTES
+
+            //FLUJO DE CLIENTES
+
+
+            else { 
+
+
                 const textoRecibido = message.text || "";
                 const textoMinus = textoRecibido.toLowerCase();
                 const replyText = message.reply_to_message ? message.reply_to_message.text : "";
@@ -1072,7 +1189,40 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true }); 
                 }
             
+                // NUEVO: Interceptor de IA para el ARCHIVADOR VISUAL
+                const palabrasClave = ['foto', 'ver', 'enseña', 'muestra', 'ejemplo', 'trabajo', 'hecho'];
+                const pareceBusqueda = palabrasClave.some(p => textoMinus.includes(p));
+
+                if (pareceBusqueda) {
+                    const intencion = await openaiService.detectarIntencionPortfolio(textoMinus);
+                    
+                    if (intencion !== "nada") {
+                        await enviarMensajeSimple(chatId, `✨ ¡Claro que sí, primor! Busco ahora mismo mis trabajos de *${intencion}*...`);
+                        const trabajos = await airtableService.buscarTrabajosPortfolio(intencion);
+
+                        if (trabajos && trabajos.length > 0) {
+                            const mediaGroup = trabajos.map(t => ({
+                                type: 'photo', media: t.url, caption: t.caption
+                            }));
+
+                            await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMediaGroup`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ chat_id: chatId, media: mediaGroup })
+                            });
+
+                            const botonesCierre = [
+                                [{ text: "🔍 Ver otra categoría", callback_data: "CLI_TELAS" }],
+                                [{ text: "🏠 Volver al Inicio", callback_data: "CLI_INICIO" }]
+                            ];
+                            await enviarMensajeConBotones(chatId, "Espero que te gusten, corazón. ¿Quieres ver algo más?", botonesCierre);
+                            return res.status(200).json({ ok: true });
+                        }
+                    }
+                }
               
+                // SALUDO PRINCIPAL
+                
                 else if (textoMinus === "/start" || textoMinus === "hola") {
                     const botones = obtenerBotonesMenuPrincipal();
                     const bienvenida = "¡Hola, primor! Soy Mamassistant, la ayudante de Mamafina. 🧵 ¿En qué puedo ayudarte hoy?";

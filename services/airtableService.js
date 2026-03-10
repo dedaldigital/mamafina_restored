@@ -393,6 +393,36 @@ class AirtableService {
         }
 
 
+        async buscarTrabajosPortfolio(termino) {
+            try {
+                const t = termino.toLowerCase().trim();
+                
+                const formula = t === 'todo' 
+                    ? "NOT({Foto_Final} = '')" 
+                    : `OR(
+                        LOWER({Categoria}) = "${t}",
+                        SEARCH("${t}", LOWER({Nombre_Proyecto})),
+                        SEARCH("${t}", LOWER({Keywords}))
+                      )`;
+        
+                const records = await this.base('Trabajos_Realizados').select({
+                    filterByFormula: formula,
+                    maxRecords: 10,
+                    sort: [{ field: "Fecha_Terminado", direction: "desc" }]
+                }).all();
+        
+                return records.map(r => ({
+                    caption: r.fields.Nombre_Proyecto || "Trabajo de Mamafina",
+                    url: r.fields.Foto_Final && r.fields.Foto_Final.length > 0 ? r.fields.Foto_Final[0].url : null
+                })).filter(item => item.url !== null);
+        
+            } catch (e) {
+                console.error("💥 Error en buscarTrabajosPortfolio:", e.message);
+                return [];
+            }
+        }
+
+
 // --------------------- CLIENTE ----------------------
 
     async registrarProspecto(chatId, nombreTelegram) {
