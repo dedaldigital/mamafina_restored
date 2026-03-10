@@ -694,6 +694,30 @@ module.exports = async function handler(req, res) {
                 await responderBoton(callback_query.id);
                 return res.status(200).json({ ok: true });
             }
+
+            // --- DISPARADORES DE MODIFICACIÓN (DENTRO DEL CALLBACK_QUERY) ---
+            else if (data === "MOD_NOMBRE") {
+                try {
+                    const meta = { step: "ACAD_ESP_NOMBRE_REAL", chatId };
+                    // Usamos enviarMensajeConReply para forzar que el usuario responda a este mensaje
+                    await enviarMensajeConReply(chatId, "✍️ **¿Cómo quieres que te anote en la libreta?**\n(Dime tu Nombre y Apellidos)\n\n(DATOS_IA: " + JSON.stringify(meta) + ")");
+                } catch (e) {
+                    console.error("Error en MOD_NOMBRE:", e.message);
+                }
+                await responderBoton(callback_query.id);
+                return res.status(200).json({ ok: true });
+            }
+
+            else if (data === "MOD_PROYECTO") {
+                try {
+                    const meta = { step: "ACAD_ESP_PROYECTO", chatId };
+                    await enviarMensajeConReply(chatId, "🧵 **¿En qué proyecto estás trabajando ahora, primor?**\n\n(DATOS_IA: " + JSON.stringify(meta) + ")");
+                } catch (e) {
+                    console.error("Error en MOD_PROYECTO:", e.message);
+                }
+                await responderBoton(callback_query.id);
+                return res.status(200).json({ ok: true });
+            }
             
             await responderBoton(callback_query.id);
             return res.status(200).json({ ok: true })
