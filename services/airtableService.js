@@ -603,20 +603,20 @@ class AirtableService {
 
     // Añadir a services/airtableService.js
 
-    async crearFichaBasica(chatId, nombreUser) {
+    async crearFichaBasica(chatId, username) {
         try {
+            // IMPORTANTE: Verifica que el nombre de la tabla sea 'Alumnas_Comunidad' en Airtable
             return await this.base('Alumnas_Comunidad').create([{
                 fields: {
-                    "Telegram_ID": String(chatId),
-                    "Nombre_Real": nombreUser || "Nueva Alumna",
-                    "Notas_Tecnicas": "Ficha creada automáticamente por el Bot. ✨"
+                    "Telegram_ID": String(chatId), // Campo de texto
+                    "Nombre_Real": username || "Nueva Alumna", // Campo de texto
+                    "Notas_Tecnicas": "Ficha creada automáticamente. ✨" // Campo de texto largo
                 }
             }]);
         } catch (e) {
-            console.error("💥 Error creando ficha automática:", e.message);
+            console.error("💥 Error real en Airtable:", e.message);
             return null;
         }
     }
- }
-
+}
 module.exports = new AirtableService();
