@@ -588,8 +588,7 @@ module.exports = async function handler(req, res) {
             if (data === "CLI_ACADEMIA") {
                 const botones = [
                     [{ text: "📝 Actualizar mi Labor", callback_data: "ACAD_UPDATE_LABOR" }],
-                    [{ text: "📓 Mi Ficha de Alumna", callback_data: "ACAD_MI_FICHA" }],
-                    [{ text: "📅 Ver Clases y Huecos", callback_data: "ACAD_VER_CLASES" }], // Añadido para consistencia
+                    [{ text: "📝 Gestionar mi Ficha", callback_data: "ACAD_GESTION_FICHA" }],                    [{ text: "📅 Ver Clases y Huecos", callback_data: "ACAD_VER_CLASES" }], // Añadido para consistencia
                     [{ text: "🧶 Grupo Clases Crochet", url: "https://chat.whatsapp.com/C5ZLwuNwAMWCh4MGZBI7RY" }],
                     [{ text: "🏠 Volver al Inicio", callback_data: "CLI_INICIO" }]
                 ];
@@ -606,38 +605,48 @@ module.exports = async function handler(req, res) {
                 await enviarMensajeConReply(chatId, `✨ ¡Perfecto! Vamos a actualizar tu ficha.\n\n¿En qué **Proyecto** estás trabajando ahora?\n\n(DATOS_IA: ${JSON.stringify(meta)})`);
             }
 
-            // B. Ficha Privada (Seguridad Blindada por chatId)
-            else if (data === "ACAD_MI_FICHA") {
+            // --- GESTIÓN DE FICHA (ESTRATEGIA DEMO: CREACIÓN + PANEL) ---
+            if (data === "ACAD_MI_FICHA" || data === "ACAD_GESTION_FICHA") {
                 try {
+                    // 1. Buscamos si ya tiene ficha en la tabla Alumnas_Comunidad
                     let ficha = await airtableService.obtenerFichaAlumna(chatId);
-                    
-                    // 1. SI NO EXISTE FICHA: Registro Técnico inicial
+                    let mensajeStatus = "";
+
+                    // 2. CREACIÓN SILENCIOSA: Si no existe, la creamos con datos básicos
                     if (!ficha) {
                         await airtableService.crearFichaBasica(chatId, user);
-                        const meta = { step: "ACAD_ESP_NOMBRE_REAL", chatId };
-                        await enviarMensajeConReply(chatId, 
-                            "✨ ¡Bienvenida a la academia, primor! Ya te tengo en mi sistema.\n\nPero dime, ¿cómo te llamas para que te anote bien en mi libreta? ✍️\n\n(DATOS_IA: " + JSON.stringify(meta) + ")");
-                    } 
-                    // 2. SI EXISTE PERO ESTÁ PENDIENTE DE NOMBRE HUMANO
-                    else if (!ficha.Nombre_Real || ficha.Nombre_Real === "Pendiente") {
-                        const meta = { step: "ACAD_ESP_NOMBRE_REAL", chatId };
-                        await enviarMensajeConReply(chatId, "¡Cielo! Todavía no me has dicho tu nombre real. ¿Cómo te llamas para completar tu ficha? 😊\n\n(DATOS_IA: " + JSON.stringify(meta) + ")");
-                    } 
-                    // 3. SI ESTÁ TODO OK: Mostrar Ficha Profesional
-                    else {
-                        const texto = `📓 **TU FICHA DE ALUMNA**\n\n👤 **Nombre:** ${ficha.Nombre_Real}\n🧵 **Proyecto:** ${ficha.Proyecto_Actual || 'Sin proyecto activo'}\n📍 **Notas:** ${ficha.Notas_Tecnicas || 'Sin notas aún'}\n\n_Para actualizar tu avance, pulsa "Actualizar mi Labor" en el menú._`;
-                        await enviarMensajeSimple(chatId, texto);
+                        mensajeStatus = "✨ **¡Ficha del Costurero Creada!**\n\nBienvenida a la academia, primor. Todavía no tengo tus datos anotados en mi libreta.\n\nUsa los botones de abajo para completar tu perfil a tu ritmo. 👇";
+                    } else {
+                        // 3. RECUPERACIÓN: Mostramos lo que tenemos en Airtable
+                        mensajeStatus = `📓 **TU FICHA DE ALUMNA**\n\n` +
+                                        `👤 **Nombre:** ${ficha.Nombre_Real || '⚠️ Pendiente'}\n` +
+                                        `🧵 **Proyecto:** ${ficha.Proyecto_Actual || 'Sin anotar'}\n` +
+                                        `📍 **Notas:** ${ficha.Notas_Tecnicas || 'Sin notas'}\n\n` +
+                                        `¿Qué quieres actualizar hoy, cielo?`;
                     }
-                    
-                } catch (e) { 
-                    console.error("💥 Error en flujo de ficha:", e.message);
-                    await enviarMensajeSimple(chatId, "❌ He tenido un problemilla al leer tu ficha, corazón. Inténtalo de nuevo en un momento.");
-                }
 
-                // EL PARARRAYOS: Siempre fuera del catch pero dentro del flujo de callback
+                    // 4. PANEL DE BOTONES: Acciones directas para la alumna
+                    const botonesGestion = [
+                        [{ text: "👤 Cambiar mi Nombre", callback_data: "MOD_NOMBRE" }],
+                        [{ text: "🧵 Actualizar Proyecto", callback_data: "MOD_PROYECTO" }],
+                        [{ text: "📸 Subir Foto de Avance", callback_data: "ACAD_UPDATE_LABOR" }],
+                        [{ text: "🏠 Volver a la Academia", callback_data: "CLI_ACADEMIA" }]
+                    ];
+
+                    // Editamos el mensaje actual para que la navegación sea fluida
+                    await editarMensajeConBotones(chatId, messageId, mensajeStatus, botonesGestion);
+
+                } catch (e) {
+                    console.error("💥 Error Crítico en Gestión Ficha:", e.message);
+                    await enviarMensajeSimple(chatId, "❌ He tenido un tropezón al abrir tu ficha. ¡Inténtalo de nuevo en un momento, primor!");
+                }
+                
+                // IMPORTANTE: Liberamos el reloj de arena de Telegram
                 await responderBoton(callback_query.id);
                 return res.status(200).json({ ok: true });
             }
+                    
+            
             // C. Ver Clases y Lista de Espera
             else if (data === "ACAD_VER_CLASES") {
                 const clases = await airtableService.obtenerClasesDisponibles();
@@ -651,9 +660,45 @@ module.exports = async function handler(req, res) {
                         await enviarMensajeConBotones(chatId, txt, btn);
                     }
                 }
+
+                
             }
+            if (data === "ACAD_MI_FICHA" || data === "ACAD_GESTION_FICHA") {              try {
+                    let ficha = await airtableService.obtenerFichaAlumna(chatId);
+                    let mensajeStatus = "📓 **Tu Ficha de Alumna**\n\n";
+            
+                    if (!ficha) {
+                        // Creación silenciosa si no existe
+                        await airtableService.crearFichaBasica(chatId, user);
+                        mensajeStatus = "✨ **¡Ficha creada con éxito!**\n\nTodavía no te conozco bien, primor. Pulsa los botones de abajo para completar tu perfil.";
+                    } else {
+                        mensajeStatus += `👤 **Nombre:** ${ficha.Nombre_Real || 'Pendiente'}\n` +
+                                        `🧵 **Proyecto:** ${ficha.Proyecto_Actual || 'Sin anotar'}\n` +
+                                        `📍 **Notas:** ${ficha.Notas_Tecnicas || 'Sin notas'}`;
+                    }
+            
+                    const botonesGestion = [
+                        [{ text: "👤 Cambiar mi Nombre", callback_data: "MOD_NOMBRE" }],
+                        [{ text: "🧵 Actualizar Proyecto", callback_data: "MOD_PROYECTO" }],
+                        [{ text: "📸 Subir Foto de Avance", callback_data: "MOD_FOTO" }],
+                        [{ text: "⬅️ Volver", callback_data: "CLI_ACADEMIA" }]
+                    ];
+            
+                    await editarMensajeConBotones(chatId, messageId, mensajeStatus, botonesGestion);
+            
+                } catch (e) {
+                    console.error("Error gestionando ficha:", e.message);
+                    await enviarMensajeSimple(chatId, "❌ He tenido un tropezón con la libreta. Prueba en un momento.");
+                }
+                
+                await responderBoton(callback_query.id);
+                return res.status(200).json({ ok: true });
+            }
+            
             await responderBoton(callback_query.id);
             return res.status(200).json({ ok: true })
+
+            
 
         } //CIERRE CALLBACK QUERY
         
