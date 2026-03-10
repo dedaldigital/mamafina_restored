@@ -600,6 +600,23 @@ class AirtableService {
             }]);
         } catch (e) { console.error("Error lista espera:", e.message); }
     }
+
+    // Añadir a services/airtableService.js
+
+    async crearFichaBasica(chatId, nombreUser) {
+        try {
+            return await this.base('Alumnas_Comunidad').create([{
+                fields: {
+                    "Telegram_ID": String(chatId),
+                    "Nombre_Real": nombreUser || "Nueva Alumna",
+                    "Notas_Tecnicas": "Ficha creada automáticamente por el Bot. ✨"
+                }
+            }]);
+        } catch (e) {
+            console.error("💥 Error creando ficha automática:", e.message);
+            return null;
+        }
     }
+ }
 
 module.exports = new AirtableService();
