@@ -582,6 +582,62 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
+            // --- MÓDULO ACADEMIA ---
+
+            // A. Menú Principal de Academia
+            if (data === "CLI_ACADEMIA") {
+                const botones = [
+                    [{ text: "📝 Actualizar mi Labor", callback_data: "ACAD_UPDATE_LABOR" }],
+                    [{ text: "📓 Ver mis Notas", callback_data: "ACAD_MI_FICHA" }],
+                    [{ text: "🧶 Grupo Clases Crochet", url: "https:https://chat.whatsapp.com/C5ZLwuNwAMWCh4MGZBI7RY?mode=gi_t" }],
+                    [{ text: "📢 Canal de Difusión Mamafina", url: "https://chat.whatsapp.com/C5ZLwuNwAMWCh4MGZBI7RY?mode=gi_t" }],
+                    [{ text: "📓 Mi Ficha de Alumna", callback_data: "ACAD_MI_FICHA" }],
+                    [{ text: "🏠 Volver al Inicio", callback_data: "CLI_INICIO" }]
+                ];
+                
+                await editarMensajeConBotones(chatId, messageId, 
+                    "¡Claro que sí, cielo! Aquí tienes los accesos directos a nuestros grupos. ✨\n\n" +
+                    "Únete para no perderte ningún patrón y estar al día de las novedades del taller.", 
+                    botones);
+            }
+
+            // Iniciador del cuestionario
+            else if (data === "ACAD_UPDATE_LABOR") {
+                const meta = { step: "ACAD_ESP_PROYECTO", chatId };
+                await enviarMensajeConReply(chatId, `✨ ¡Perfecto! Vamos a actualizar tu ficha.\n\n¿En qué **Proyecto** estás trabajando ahora?\n\n(DATOS_IA: ${JSON.stringify(meta)})`);
+            }
+
+            // B. Ficha Privada (Seguridad Blindada por chatId)
+            else if (data === "ACAD_MI_FICHA") {
+                const ficha = await airtableService.obtenerFichaAlumna(chatId); // Filtrado por ID 
+                
+                if (!ficha) {
+                    await enviarMensajeSimple(chatId, "¡Ay, cielo! No te encuentro en mi libretita de alumnas todavía. Pregúntale a Reyes en clase para que te demos de alta con tu ID. 🧵");
+                } else {
+                    const textoFicha = `📓 **TU FICHA DE ALUMNA**\n\n` +
+                        `👤 **Nombre:** ${ficha.Nombre_Real}\n` +
+                        `🧵 **Proyecto:** ${ficha.Proyecto_Actual || 'Sin empezar'}\n` +
+                        `📍 **Notas:** ${ficha.Notas_Tecnicas || 'Sin notas'}\n\n` +
+                        `_Solo tú puedes ver esta información, corazón._`;
+                    await enviarMensajeSimple(chatId, textoFicha);
+                }
+            }
+
+            // C. Ver Clases y Lista de Espera
+            else if (data === "ACAD_VER_CLASES") {
+                const clases = await airtableService.obtenerClasesDisponibles();
+                
+                if (clases.length === 0) {
+                    await enviarMensajeSimple(chatId, "Ahora mismo todas las clases están completas, pero si quieres puedes apuntarte a la lista de espera y te aviso si alguien falla. ✨");
+                } else {
+                    for (const c of clases) {
+                        const txt = `🎓 **${c.fields.Nombre_Clase}**\n🪑 Huecos: ${c.fields.Huecos_Libres}`;
+                        const btn = [[{ text: "🙋 Me interesa", callback_data: `WAIT|${c.id.slice(-5)}` }]]; // ID Corto 
+                        await enviarMensajeConBotones(chatId, txt, btn);
+                    }
+                }
+            }
+
         } //CIERRE CALLBACK QUERY
         
 
@@ -607,9 +663,58 @@ module.exports = async function handler(req, res) {
             
             } 
 
-            return res.status(200).json({ ok: true });
+            // --- FLUJO B: ALUMNA (Diario de Labores) --- 
+            else {
+                // Verificamos si la foto es una respuesta al paso de "FOTO_AVANCE"
+                if (message.reply_to_message) {
+                    const replyText = message.reply_to_message.text;
+                    const metadata = extraerMetadata(replyText); // Función helper ya definida
 
-        } //CIERRE BLOQUE DE FOTOS
+                    if (metadata && metadata.step === "ACAD_ESP_FOTO") {
+                        await enviarMensajeSimple(chatId, "⏳ **Guardando tu avance en el costurero digital...**");
+
+                        try {
+                            // 1. Obtener URL de Telegram
+                            const fileRes = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/getFile?file_id=${fotoFull.file_id}`);
+                            const fileJson = await fileRes.json();
+                            const urlTele = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileJson.result.file_path}`;
+
+                            // 2. Subida Crítica a ImgBB para URL permanente [cite: 19]
+                            const urlFinal = await imgbbService.subirAFotoUsuario(urlTele);
+
+                            // 3. Persistencia en Airtable (TB-11) [cite: 12]
+                            const fichaExistente = await airtableService.obtenerFichaAlumna(chatId);
+                            const campos = {
+                                "Telegram_ID": String(chatId),
+                                "Proyecto_Actual": metadata.proyecto,
+                                "Notas_Tecnicas": metadata.notas,
+                                "Foto": urlFinal // Asegúrate de que el campo en Airtable se llame 'Foto' o 'Adjunto' 
+                            };
+
+                            if (fichaExistente) {
+                                // Si ya tiene ficha, actualizamos sus notas y foto 
+                                await airtableService.base('Alumnas_Comunidad').update(fichaExistente.id, campos);
+                            } else {
+                                // Si es nueva, creamos su primer registro 
+                                await airtableService.base('Alumnas_Comunidad').create([{ fields: campos }]);
+                            }
+
+                            await enviarMensajeSimple(chatId, `✅ **¡Todo guardado, primor!**\n\nHe anotado tu avance en *${metadata.proyecto}* con la aguja ${metadata.notas}. ¡Va a quedar precioso! ✨`);
+                        } catch (e) {
+                            console.error("💥 Error en guardado de alumna:", e.message);
+                            await enviarMensajeSimple(chatId, "⚠️ ¡Ay, cielo! He podido anotar tus notas pero la foto se me ha escapado. No te preocupes, lo importante es el avance.");
+                        }
+                    }
+                } else {
+                    // Si una alumna envía una foto sin estar en el flujo, la IA responde con cortesía
+                    const respuestaIA = await openaiService.generarRespuesta("He recibido una foto de una alumna fuera de flujo.");
+                    await enviarMensajeSimple(chatId, "¡Qué foto más bonita, corazón! Si quieres que la guarde en tu ficha de clase, pulsa primero en **🎓 Clases** -> **📝 Actualizar mi Labor**.");
+                }
+            }
+
+            return res.status(200).json({ ok: true }); // Pararrayos activado [cite: 43]
+        }//CIERRE BLOQUE DE FOTOS
+
 
         
         // ---------------------------------------------------------
@@ -779,6 +884,9 @@ module.exports = async function handler(req, res) {
                             await enviarMensajeConReply(chatId, `💰 Precio: *${metadata.precio}*\n¿Qué **Cantidad (Stock)** hay?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
                             return res.status(200).json({ ok: true }); // ✨ AÑADIDO: Cierre de paso
                         }
+                    }
+
+                        
 
 
                         // Guardado
@@ -798,18 +906,18 @@ module.exports = async function handler(req, res) {
                                     if (fileJson.ok) {
                                         const urlTele = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileJson.result.file_path}`;
                                         
-                                        // 2. Subida Crítica a ImgBB
+                                        // 2. Subida Crítica a ImgBB 
                                         const urlFinal = await imgbbService.subirAFotoUsuario(urlTele);
                                         
                                         if (urlFinal) {
-                                            metadata.urlImgBB = urlFinal; // 👈 IMPORTANTE: Se guarda en metadata
+                                            metadata.urlImgBB = urlFinal; // Se guarda en metadata para Airtable
                                             console.log("📸 URL Generada con éxito:", urlFinal);
                                         }
                                     }
                                 }
                         
-                                // 3. Llamada al servicio con los metadatos completos
-                                // Pasamos el objeto 'metadata' que ya incluye (o no) la urlImgBB
+                                // 3. Llamada al servicio con los metadatos completos 
+                                // Se ejecuta fuera del 'if (fotoId)' pero dentro del 'try' principal
                                 await airtableService.crearRegistroDesdeIA(metadata.nombre, metadata);
                                 
                                 const conFoto = metadata.urlImgBB ? "🖼️ ✅ Con foto" : "⚠️ Sin foto";
@@ -817,9 +925,48 @@ module.exports = async function handler(req, res) {
                         
                             } catch (e) {
                                 console.error("💥 Error en el proceso final:", e.message);
-                                await enviarMensajeSimple(chatId, "❌ Hubo un problema al guardar la imagen, pero el texto se ha registrado.");
+                                await enviarMensajeSimple(chatId, "❌ Hubo un problema al guardar en el sistema, pero el registro se ha intentado procesar.");
                             }
-                            return res.status(200).json({ ok: true });
+                        
+                            return res.status(200).json({ ok: true }); // Cierre del pararrayos 
+                        }
+
+                        if (metadata && metadata.step) {
+                            if (metadata.step === "ACAD_ESP_PROYECTO") {
+                                metadata.proyecto = textoRecibido;
+                                metadata.step = "ACAD_ESP_TECNICO";
+                                await enviarMensajeConReply(chatId, `🧵 ¡Qué bonito! ¿Y qué **Número de Aguja** o ganchillo estás usando?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                            }
+                            else if (metadata.step === "ACAD_ESP_TECNICO") {
+                                metadata.notas = textoRecibido;
+                                
+                                await enviarMensajeSimple(chatId, "⏳ Guardando tus avances en el costurero digital...");
+                                
+                                // Buscamos si ya existe la alumna para actualizar o crear
+                                const fichaExistente = await airtableService.obtenerFichaAlumna(chatId);
+                                
+                                const campos = {
+                                    "Telegram_ID": String(chatId),
+                                    "Proyecto_Actual": metadata.proyecto,
+                                    "Notas_Tecnicas": `Aguja: ${metadata.notas}`
+                                };
+                        
+                                if (fichaExistente) {
+                                    await airtableService.base('Alumnas_Comunidad').update(fichaExistente.id, campos);
+                                } else {
+                                    await airtableService.base('Alumnas_Comunidad').create([{ fields: campos }]);
+                                }
+                        
+                                await enviarMensajeSimple(chatId, `✅ ¡Listo, cariño! Ya he anotado tu avance en *${metadata.proyecto}*. Cuando quieras recordarlo, solo tienes que pedírmelo. ✨`);
+                            }
+
+                            if (metadata.step === "ACAD_ESP_TECNICO") {
+                                metadata.notas = textoRecibido;
+                                metadata.step = "ACAD_ESP_FOTO"; // Nuevo paso
+                                
+                                await enviarMensajeConReply(chatId, 
+                                    `📸 ¡Anotado! **Aguja: ${metadata.notas}**.\n\nPara terminar, ¿me envías una **foto de cómo va tu labor**? Me encanta ver vuestros progresos. ✨\n\n(Escribe 'no' si prefieres no enviarla ahora).\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                                return res.status(200).json({ ok: true });
                         }
                     }
                         // RESPUESTAS DE TAREA
@@ -859,6 +1006,7 @@ module.exports = async function handler(req, res) {
                         }
 
                     }//CIERRE ESRESPUESTAS
+                   
  
 
                 // ---------------------------------------------------------
@@ -1109,11 +1257,9 @@ module.exports = async function handler(req, res) {
                 }
                 
                 return res.status(200).json({ ok: true });
-            }
-            //CIERRE ESADMIN 
+            } //CIERRE ESADMIN
 
-            //FLUJO DE CLIENTES
-
+            // FLUJO DE CLIENTES
 
             else { 
 
@@ -1237,13 +1383,14 @@ module.exports = async function handler(req, res) {
                     await enviarMensajeSimple(chatId, respuestaIA);
                     return res.status(200).json({ ok: true }); 
                 }
+            } //CIERRE FLUJO DE CLIENTES
             
-            } // CIERRE BLOQUE DE CLIENTES
-
-    } //CERRAMOS BLOQUE DE TEXTO
+        } //CIERRE FLUJO DE TEXTO 
 
 
-}//CERRAMOS TRY
+
+
+    } //CIERRE FLUJO DE TEXTO//CERRAMOS TRY
 
   
     catch (error) {
@@ -1350,9 +1497,10 @@ module.exports = async function handler(req, res) {
     function obtenerBotonesMenuPrincipal() {
         const abierta = estaLaTiendaAbierta();
         return [
+            [{ text: "🎓 Clases de Costura", callback_data: "CLI_ACADEMIA" }], // Nuevo acceso
             [{ text: abierta ? "📲 Hablar con nosotras (Abierto)" : "🙋 Dejar consulta", callback_data: "CLI_INTERESADO" }],
             [{ text: "📦 Mi pedido", callback_data: "CLI_ESTADO" }],
-            [{ text: "🧵 Telas", callback_data: "CLI_TELAS" }],
+            [{ text: "🧵 Catálogo", callback_data: "CLI_TELAS" }],
             [{ text: "⏰ Horario", callback_data: "CLI_HORARIO" }]
         ];
     }

@@ -244,7 +244,7 @@ class AirtableService {
         // --- SECCIÓN: VISIÓN IA (NUEVO) ---
         async crearRegistroDesdeIA(nombre, datos) {
             try {
-                let tabla = this.t.inventario; // Por defecto Mercería
+                let tabla = this.t.inventario; // Por defecto: Mercería 
                 let campos = {
                     "Articulo": nombre,
                     "Referencia": datos.referencia || "",
@@ -252,32 +252,35 @@ class AirtableService {
                     "Precio": parseFloat(datos.precio) || 0
                 };
         
-                // DISTINCIÓN DE TIPO 
+                // DISTINCIÓN DE TABLA SEGÚN EL TIPO DE ANÁLISIS 
                 if (datos.tipo === "TELA") {
                     tabla = this.t.telas;
-                    campos["Color"] = datos.Color_Principal;
-                    campos["Estampado"] = datos.Tipo_Estampado;
-                    campos["Prompt_Final"] = datos.prompt_final || ""; 
+                    campos["Color"] = datos.Color_Principal || "";
+                    campos["Estampado"] = datos.Tipo_Estampado || "";
+                    campos["Prompt_Final"] = datos.prompt_final || ""; // El prompt de 35 palabras [cite: 18]
                 } 
                 else if (datos.tipo === "PROD") {
                     tabla = this.t.productos;
-                    campos["Prompt_Final"] = datos.prompt_prod || ""; 
+                    campos["Prompt_Final"] = datos.prompt_prod || ""; // El prompt de 3-6 palabras [cite: 18]
                 }
         
-                // 🔗 CONEXIÓN CON EL WEBHOOK:
-                // Como el campo en tu Airtable es tipo 'URL', enviamos el texto directamente
+                // INTEGRACIÓN DE LA FOTO (ImgBB URL) [cite: 19]
+                // En Airtable, si el campo es tipo 'URL', pasamos el string. 
+                // Si es 'Adjunto', enviamos un array de objetos [{url: "..."}] 
                 if (datos.urlImgBB) {
-                    campos["Foto"] = datos.urlImgBB;
+                    // Ajustamos según tu configuración de tabla (usualmente "Foto")
+                    campos["Foto"] = datos.urlImgBB; 
                 }
         
                 const record = await this.base(tabla).create([{ fields: campos }]);
                 
-                // Registro de auditoría
-                await this.crearRegistro(nombre, "Alta IA", campos["Stock"], campos["Stock"]);
+                // REGISTRO DE AUDITORÍA: Guardamos el movimiento en la tabla de Registros 
+                await this.crearRegistro(nombre, "Alta IA", campos["Stock"], campos["Stock"], "Mamassistant");
                 
                 return record[0];
             } catch (e) { 
-                this._logError(e, 'crearRegistroDesdeIA'); 
+                console.error("❌ Error en crearRegistroDesdeIA:", e.message);
+                throw e;
             }  
         }
     // Dentro de la clase AirtableService
@@ -563,6 +566,40 @@ class AirtableService {
             return { detalle: "Encargo", telefono: "", nombre: "Cliente" };
         }
     }
-}
+
+    // FICHA PRIVADA: Filtrado por ID de Telegram
+    async obtenerFichaAlumna(chatId) {
+        try {
+            const records = await this.base('Alumnas_Comunidad').select({
+                filterByFormula: `{Telegram_ID} = '${chatId}'`,
+                maxRecords: 1
+            }).firstPage();
+            return records.length > 0 ? records[0].fields : null;
+        } catch (e) { console.error("Error ficha:", e.message); return null; }
+    }
+
+    // 2. CONSULTA DE CLASES: Solo las que tienen huecos
+    async obtenerClasesDisponibles() {
+        try {
+            return await this.base('Gestion_Clases').select({
+                filterByFormula: "{Huecos_Libres} > 0",
+                sort: [{ field: "Nombre_Clase", direction: "asc" }]
+            }).all();
+        } catch (e) { return []; }
+    }
+
+    // 3. LISTA DE ESPERA: Protocolo ERR-22 para IDs cortos
+    async registrarEnListaEspera(chatId, nombre, idClase) {
+        try {
+            return await this.base('Alumnas_Comunidad').create([{
+                fields: {
+                    "Telegram_ID": String(chatId),
+                    "Nombre_Real": nombre,
+                    "Lista_Espera": [idClase]
+                }
+            }]);
+        } catch (e) { console.error("Error lista espera:", e.message); }
+    }
+    }
 
 module.exports = new AirtableService();
