@@ -1,0 +1,17 @@
+{
+  "name": "mamafina",
+  "version": "1.0.0",
+  "description": "Ecosistema automatizado para Mercería Mamafina",
+  "main": "api/webhook.js",
+  "dependencies": {
+    "@google/generative-ai": "^0.1.0",
+    "airtable": "^0.12.2",
+    "axios": "^1.13.6",
+    "form-data": "^4.0.5",
+    "node-fetch": "^2.6.7",
+    "openai": "^4.0.0"
+  },
+  "scripts": {
+    "start": "node api/webhook.js"
+  }
+}
