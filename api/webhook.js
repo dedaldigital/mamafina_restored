@@ -958,35 +958,37 @@ module.exports = async function handler(req, res) {
                             if (paso === "ACAD_ESP_NOMBRE_REAL") {
                                 try {
                                     const nombreHumano = textoRecibido.trim();
+                                    // Buscamos la ficha actual
                                     const ficha = await airtableService.obtenerFichaAlumna(chatId);
                                     
                                     if (ficha && ficha.id) {
-                                        // Actualizamos la fila usando el ID interno (rec...)
+                                        // Caso A: La ficha existe (está en "Pendiente"), la actualizamos
                                         await airtableService.base('Alumnas_Comunidad').update(ficha.id, {
                                             "Nombre_Real": nombreHumano 
                                         });
-                        
-                                        // Preparamos el siguiente paso en los metadatos
+                                        
                                         metadata.step = "ACAD_ESP_PROYECTO";
                                         metadata.nombreReal = nombreHumano;
-                        
+                            
                                         await enviarMensajeConReply(chatId, 
                                             `✅ ¡Perfecto, **${nombreHumano}**! Ya estás en la libretita.\n\n¿En qué **Proyecto** estás trabajando hoy? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
                                     } else {
-                                        // Si la ficha no existe (raro), la creamos de cero con el nombre
+                                        // Caso B: No hay ficha, la creamos de cero con el nombre ya puesto
                                         await airtableService.base('Alumnas_Comunidad').create([{
                                             fields: {
-                                                "Telegram_ID": String(chatId),
+                                                "Telegram_ID": String(chatId), // Siempre String para evitar líos
                                                 "Nombre_Real": nombreHumano,
-                                                "Notas_Tecnicas": "Alta directa."
+                                                "Notas_Tecnicas": "Alta directa desde cambio de nombre. ✨"
                                             }
                                         }]);
+                                        
                                         metadata.step = "ACAD_ESP_PROYECTO";
-                                        await enviarMensajeConReply(chatId, `✅ ¡Anotada, **${nombreHumano}**! ¿En qué **Proyecto** estamos? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                                        await enviarMensajeConReply(chatId, `✅ ¡Anotada, **${nombreHumano}**! Cuéntame, ¿en qué **Proyecto** estamos? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
                                     }
                                 } catch (e) {
-                                    console.error("💥 Error en paso NOMBRE_REAL:", e.message);
-                                    await enviarMensajeSimple(chatId, "❌ He tenido un tropezón al guardar tu nombre. ¡Inténtalo de nuevo, primor!");
+                                    console.error("💥 ERROR CRÍTICO NOMBRE_REAL:", e.message);
+                                    // Si hay error, le damos una salida amable al usuario
+                                    await enviarMensajeSimple(chatId, "❌ No he podido guardar tu nombre en la tabla. Revisa que la columna se llame exactamente 'Nombre_Real' y que no sea el campo primario con restricciones.");
                                 }
                                 return res.status(200).json({ ok: true });
                             }
