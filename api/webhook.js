@@ -608,30 +608,29 @@ module.exports = async function handler(req, res) {
 
             // B. Ficha Privada (Seguridad Blindada por chatId)
             else if (data === "ACAD_MI_FICHA") {
-                let ficha = await airtableService.obtenerFichaAlumna(chatId); // Buscamos por ID 
-                
-                if (!ficha) {
-                    await enviarMensajeSimple(chatId, "✨ ¡Ay, primor! No te tenía en mi lista, pero no te preocupes, que ahora mismo te hago un huequito...");
+                try {
+                    let ficha = await airtableService.obtenerFichaAlumna(chatId);
                     
-                    // Creamos la ficha al vuelo 
-                    const nuevaFicha = await airtableService.crearFichaBasica(chatId, user);
-                    
-                    if (nuevaFicha) {
-                        await enviarMensajeSimple(chatId, "✅ **¡Listo, corazón!** Ya te he dado de alta. Ahora puedes usar el botón de **Actualizar mi Labor** para contarme qué estás cosiendo.");
+                    if (!ficha) {
+                        const nueva = await airtableService.crearFichaBasica(chatId, user);
+                        if (nueva) {
+                            // Encadenamos con la primera pregunta para que no se quede vacío
+                            const meta = { step: "ACAD_ESP_PROYECTO", chatId };
+                            await enviarMensajeConReply(chatId, 
+                                "✅ **¡Ya te tengo en mi lista, primor!**\n\nComo eres nueva, cuéntame: ¿en qué **Proyecto** vas a empezar a trabajar? 🧵\n\n(DATOS_IA: " + JSON.stringify(meta) + ")");
+                        } else {
+                            await enviarMensajeSimple(chatId, "⚠️ He tenido un problemilla al abrir tu ficha. Revisa los nombres de las columnas en Airtable, cielo.");
+                        }
                     } else {
-                        await enviarMensajeSimple(chatId, "⚠️ He tenido un problemilla con mi libreta. Por favor, avisa a Reyes en el taller.");
+                        // Mostrar los datos existentes si la ficha ya estaba
+                        const texto = `📓 **TU FICHA:**\n👤 ${ficha.Nombre_Real}\n🧵 ${ficha.Proyecto_Actual || 'Sin proyecto'}\n📍 ${ficha.Notas_Tecnicas || 'Sin notas'}`;
+                        await enviarMensajeSimple(chatId, texto);
                     }
-                } else {
-                    // Si ya existía, mostramos los datos con normalidad [cite: 34]
-                    const textoFicha = `📓 **TU FICHA DE ALUMNA**\n\n` +
-                        `👤 **Nombre:** ${ficha.Nombre_Real}\n` +
-                        `🧵 **Proyecto:** ${ficha.Proyecto_Actual || 'Todavía no has anotado ninguno'}\n` +
-                        `📍 **Notas:** ${ficha.Notas_Tecnicas || 'Sin notas técnicas'}\n\n` +
-                        `_Cielo, pulsa en "Actualizar mi Labor" si quieres cambiar algo._`;
-                    await enviarMensajeSimple(chatId, textoFicha);
+                } catch (e) { 
+                    console.error("Error en flujo de ficha:", e.message); 
                 }
-                
-                await responderBoton(callback_query.id); // Pararrayos para el reloj de carga [cite: 43]
+            
+                await responderBoton(callback_query.id); // Pararrayos [cite: 43]
                 return res.status(200).json({ ok: true });
             }
             // C. Ver Clases y Lista de Espera
