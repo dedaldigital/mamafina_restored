@@ -866,24 +866,31 @@ module.exports = async function handler(req, res) {
                     if (metadata && metadata.step) {
                         const paso = metadata.step;
                     
-                        // --- NUEVO PASO: CAPTURAR NOMBRE REAL DE LA ALUMNA ---
+                        // --- 1. PASO NUEVO: CORREGIR/AÑADIR NOMBRE REAL ---
                         if (paso === "ACAD_ESP_NOMBRE_REAL") {
                             const nombreReal = textoRecibido;
                             
-                            // 1. Buscamos la ficha técnica para actualizar el nombre real
-                            const ficha = await airtableService.obtenerFichaAlumna(chatId);
-                            if (ficha) {
-                                await airtableService.base('Alumnas_Comunidad').update(ficha.id, {
-                                    "Nombre_Real": nombreReal
-                                });
+                            try {
+                                // Buscamos la ficha por chatId para actualizarla
+                                const ficha = await airtableService.obtenerFichaAlumna(chatId);
+                                if (ficha) {
+                                    // Actualizamos el registro en Airtable con el nombre humano
+                                    await airtableService.base('Alumnas_Comunidad').update(ficha.id, {
+                                        "Nombre_Real": nombreReal
+                                    });
+                                }
+
+                                // Saltamos al siguiente paso: El Proyecto
+                                metadata.step = "ACAD_ESP_PROYECTO";
+                                metadata.nombreReal = nombreReal;
+
+                                await enviarMensajeConReply(chatId, 
+                                    `✅ ¡Mucho gusto, **${nombreReal}**! Ya he borrado tu ID y he puesto tu nombre en mi libreta.\n\nAhora dime, ¿en qué **Proyecto** estás trabajando hoy? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                                
+                            } catch (e) {
+                                console.error("Error actualizando nombre:", e.message);
+                                await enviarMensajeSimple(chatId, "❌ He tenido un problema al escribir tu nombre en la tabla. Revisa que la columna se llame 'Nombre_Real'.");
                             }
-                    
-                            // 2. Saltamos al siguiente paso (Proyecto)
-                            metadata.step = "ACAD_ESP_PROYECTO";
-                            metadata.nombreReal = nombreReal; // Guardamos en la mochila de la sesión
-                    
-                            await enviarMensajeConReply(chatId, 
-                                `✅ ¡Mucho gusto, **${nombreReal}**! Ya te tengo anotada en mi libreta.\n\nAhora dime, ¿en qué **Proyecto** estás trabajando hoy? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
                             return res.status(200).json({ ok: true });
                         }
                     
