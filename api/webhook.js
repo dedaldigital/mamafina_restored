@@ -611,33 +611,31 @@ module.exports = async function handler(req, res) {
                 try {
                     let ficha = await airtableService.obtenerFichaAlumna(chatId);
                     
-                    // 1. SI NO EXISTE FICHA: Iniciamos el registro pidiendo el NOMBRE
+                    // 1. SI NO EXISTE FICHA: Registro Técnico inicial
                     if (!ficha) {
-                        const nueva = await airtableService.crearFichaBasica(chatId, user);
-                        if (nueva) {
-                            // PRIMER PASO: Nombre Real
-                            const meta = { step: "ACAD_ESP_NOMBRE_REAL", chatId };
-                            await enviarMensajeConReply(chatId, 
-                                "✨ ¡Bienvenida a la academia, cielo! No te tenía en mi lista.\n\nPara empezar, ¿cómo te llamas? (Dime tu **Nombre y Apellidos** para mi libreta) ✍️\n\n(DATOS_IA: " + JSON.stringify(meta) + ")");
-                        } else {
-                            await enviarMensajeSimple(chatId, "⚠️ He tenido un problemilla al abrir tu ficha. Revisa los nombres de las columnas en Airtable, cielo.");
-                        }
+                        await airtableService.crearFichaBasica(chatId, user);
+                        const meta = { step: "ACAD_ESP_NOMBRE_REAL", chatId };
+                        await enviarMensajeConReply(chatId, 
+                            "✨ ¡Bienvenida a la academia, primor! Ya te tengo en mi sistema.\n\nPero dime, ¿cómo te llamas para que te anote bien en mi libreta? ✍️\n\n(DATOS_IA: " + JSON.stringify(meta) + ")");
                     } 
-                    // 2. SI EXISTE PERO NO TIENE NOMBRE (Ficha a medias): Volvemos a pedirlo
-                    else if (!ficha.Nombre_Real || ficha.Nombre_Real === "Nueva Alumna") {
-                         const meta = { step: "ACAD_ESP_NOMBRE_REAL", chatId };
-                         await enviarMensajeConReply(chatId, "¡Hola de nuevo! Todavía no sé tu nombre, ¿me lo dices para completar tu ficha? 😊\n\n(DATOS_IA: " + JSON.stringify(meta) + ")");
+                    // 2. SI EXISTE PERO ESTÁ PENDIENTE DE NOMBRE HUMANO
+                    else if (!ficha.Nombre_Real || ficha.Nombre_Real === "Pendiente") {
+                        const meta = { step: "ACAD_ESP_NOMBRE_REAL", chatId };
+                        await enviarMensajeConReply(chatId, "¡Cielo! Todavía no me has dicho tu nombre real. ¿Cómo te llamas para completar tu ficha? 😊\n\n(DATOS_IA: " + JSON.stringify(meta) + ")");
                     } 
-                    // 3. SI ESTÁ TODO OK: Mostramos su ficha normal
+                    // 3. SI ESTÁ TODO OK: Mostrar Ficha Profesional
                     else {
-                        const texto = `📓 **TU FICHA:**\n👤 ${ficha.Nombre_Real}\n🧵 ${ficha.Proyecto_Actual || 'Sin proyecto'}\n📍 ${ficha.Notas_Tecnicas || 'Sin notas'}`;
+                        const texto = `📓 **TU FICHA DE ALUMNA**\n\n👤 **Nombre:** ${ficha.Nombre_Real}\n🧵 **Proyecto:** ${ficha.Proyecto_Actual || 'Sin proyecto activo'}\n📍 **Notas:** ${ficha.Notas_Tecnicas || 'Sin notas aún'}\n\n_Para actualizar tu avance, pulsa "Actualizar mi Labor" en el menú._`;
                         await enviarMensajeSimple(chatId, texto);
                     }
+                    
                 } catch (e) { 
-                    console.error("Error en flujo de ficha:", e.message); 
+                    console.error("💥 Error en flujo de ficha:", e.message);
+                    await enviarMensajeSimple(chatId, "❌ He tenido un problemilla al leer tu ficha, corazón. Inténtalo de nuevo en un momento.");
                 }
-            
-                await responderBoton(callback_query.id); 
+
+                // EL PARARRAYOS: Siempre fuera del catch pero dentro del flujo de callback
+                await responderBoton(callback_query.id);
                 return res.status(200).json({ ok: true });
             }
             // C. Ver Clases y Lista de Espera
@@ -688,6 +686,22 @@ module.exports = async function handler(req, res) {
                 if (message.reply_to_message) {
                     const replyText = message.reply_to_message.text;
                     const metadata = extraerMetadata(replyText); // Función helper ya definida
+
+                    if (metadata.step === "ACAD_ESP_NOMBRE_REAL") {
+                        const nombreHumano = textoRecibido;
+                        const ficha = await airtableService.obtenerFichaAlumna(chatId);
+                        
+                        if (ficha) {
+                            await airtableService.base('Alumnas_Comunidad').update(ficha.id, {
+                                "Nombre_Real": nombreHumano // Ahora escribimos en la columna limpia
+                            });
+                        }
+                    
+                        metadata.step = "ACAD_ESP_PROYECTO";
+                        await enviarMensajeConReply(chatId, 
+                            `✅ ¡Encantada, **${nombreHumano}**! Ya estás bien anotada.\n\nAhora cuéntame, ¿en qué **Proyecto** estás trabajando? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                        return res.status(200).json({ ok: true });
+                    }
 
                     if (metadata && metadata.step === "ACAD_ESP_FOTO") {
                         await enviarMensajeSimple(chatId, "⏳ **Guardando tu avance en el costurero digital...**");

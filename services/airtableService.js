@@ -605,16 +605,16 @@ class AirtableService {
 
     async crearFichaBasica(chatId, username) {
         try {
-            // IMPORTANTE: Verifica que el nombre de la tabla sea 'Alumnas_Comunidad' en Airtable
             return await this.base('Alumnas_Comunidad').create([{
                 fields: {
-                    "Telegram_ID": String(chatId), // Campo de texto
-                    "Nombre_Real": username || "Nueva Alumna", // Campo de texto
-                    "Notas_Tecnicas": "Ficha creada automáticamente. ✨" // Campo de texto largo
+                    "Telegram_ID": String(chatId), // Identificador técnico único [cite: 45, 52]
+                    "User_Telegram": username || "", // Guardamos el @alias por si acaso 
+                    "Nombre_Real": "Pendiente", // Se llenará en el flujo conversacional
+                    "Notas_Tecnicas": "Ficha iniciada desde el Bot. ✨"
                 }
             }]);
         } catch (e) {
-            console.error("💥 Error real en Airtable:", e.message);
+            console.error("💥 Error en creación técnica:", e.message);
             return null;
         }
     }
