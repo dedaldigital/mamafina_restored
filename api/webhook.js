@@ -881,42 +881,56 @@ module.exports = async function handler(req, res) {
                         const paso = metadata.step;
                     
                         // --- 1. PASO NUEVO: CORREGIR/AÑADIR NOMBRE REAL ---
-                        if (paso === "ACAD_ESP_NOMBRE_REAL") {
-                            const nombreHumano = textoRecibido;
-                            
-                            try {
-                                const ficha = await airtableService.obtenerFichaAlumna(chatId);
-                                
-                                if (ficha && ficha.id) {
-                                    // Usamos ficha.id que es el identificador de fila de Airtable
-                                    await airtableService.base('Alumnas_Comunidad').update(ficha.id, {
-                                        "Nombre_Real": nombreHumano 
-                                    });
+                        if (metadata && metadata.step) {
+                            const paso = metadata.step;
+                            const textoMinus = textoRecibido.toLowerCase(); // Definimos esto por seguridad
                         
-                                    metadata.step = "ACAD_ESP_PROYECTO";
-                                    metadata.nombreReal = nombreHumano;
-                        
-                                    await enviarMensajeConReply(chatId, 
-                                        `✅ ¡Perfecto, **${nombreHumano}**! Ya estás en la libretita.\n\n¿En qué **Proyecto** estás trabajando hoy? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
-                                } else {
-                                    // Si por algún motivo no hay ficha, la creamos y guardamos el nombre
-                                    await airtableService.base('Alumnas_Comunidad').create([{
-                                        fields: {
-                                            "Telegram_ID": String(chatId),
-                                            "Nombre_Real": nombreHumano,
-                                            "Notas_Tecnicas": "Alta directa en paso de nombre. ✨"
-                                        }
-                                    }]);
+                            // --- PASO: CAPTURAR NOMBRE REAL ---
+                            if (paso === "ACAD_ESP_NOMBRE_REAL") {
+                                try {
+                                    const nombreHumano = textoRecibido.trim();
+                                    const ficha = await airtableService.obtenerFichaAlumna(chatId);
                                     
-                                    metadata.step = "ACAD_ESP_PROYECTO";
-                                    await enviarMensajeConReply(chatId, `✅ ¡Anotada, **${nombreHumano}**! ¿En qué **Proyecto** estamos?`);
+                                    if (ficha && ficha.id) {
+                                        // Actualizamos la fila usando el ID interno (rec...)
+                                        await airtableService.base('Alumnas_Comunidad').update(ficha.id, {
+                                            "Nombre_Real": nombreHumano 
+                                        });
+                        
+                                        // Preparamos el siguiente paso en los metadatos
+                                        metadata.step = "ACAD_ESP_PROYECTO";
+                                        metadata.nombreReal = nombreHumano;
+                        
+                                        await enviarMensajeConReply(chatId, 
+                                            `✅ ¡Perfecto, **${nombreHumano}**! Ya estás en la libretita.\n\n¿En qué **Proyecto** estás trabajando hoy? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                                    } else {
+                                        // Si la ficha no existe (raro), la creamos de cero con el nombre
+                                        await airtableService.base('Alumnas_Comunidad').create([{
+                                            fields: {
+                                                "Telegram_ID": String(chatId),
+                                                "Nombre_Real": nombreHumano,
+                                                "Notas_Tecnicas": "Alta directa."
+                                            }
+                                        }]);
+                                        metadata.step = "ACAD_ESP_PROYECTO";
+                                        await enviarMensajeConReply(chatId, `✅ ¡Anotada, **${nombreHumano}**! ¿En qué **Proyecto** estamos? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                                    }
+                                } catch (e) {
+                                    console.error("💥 Error en paso NOMBRE_REAL:", e.message);
+                                    await enviarMensajeSimple(chatId, "❌ He tenido un tropezón al guardar tu nombre. ¡Inténtalo de nuevo, primor!");
                                 }
-                                    
-                            } catch (e) {
-                                console.error("💥 Error en update de nombre:", e.message);
-                                await enviarMensajeSimple(chatId, "❌ He tenido un tropezón al guardar tu nombre. ¡Inténtalo de nuevo, primor!");
+                                return res.status(200).json({ ok: true });
                             }
-                            return res.status(200).json({ ok: true });
+                        
+                            // --- PASO: CAPTURAR PROYECTO ---
+                            else if (paso === "ACAD_ESP_PROYECTO") {
+                                metadata.proyecto = textoRecibido;
+                                metadata.step = "ACAD_ESP_TECNICO";
+                        
+                                await enviarMensajeConReply(chatId, 
+                                    `🧵 ¡Qué bien suena! **${textoRecibido}**.\n\n¿Qué **Número de Aguja** estás usando?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                                return res.status(200).json({ ok: true });
+                            }
                         }
                         // --- TUS PASOS EXISTENTES DE INVENTARIO Y TRABAJOS ---
                         if (paso === "ESP_NOMBRE_TRABAJO") {
