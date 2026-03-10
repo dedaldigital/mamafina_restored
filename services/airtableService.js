@@ -574,10 +574,20 @@ class AirtableService {
                 filterByFormula: `{Telegram_ID} = '${chatId}'`,
                 maxRecords: 1
             }).firstPage();
-            return records.length > 0 ? records[0].fields : null;
-        } catch (e) { console.error("Error ficha:", e.message); return null; }
+            
+            if (records.length > 0) {
+                // Devolvemos el ID de la fila (rec...) + los campos
+                return {
+                    id: records[0].id, // <--- ESTO ES LO QUE NECESITAMOS PARA EL UPDATE
+                    ...records[0].fields
+                };
+            }
+            return null;
+        } catch (e) {
+            console.error("Error buscando ficha:", e.message);
+            return null;
+        }
     }
-
     // 2. CONSULTA DE CLASES: Solo las que tienen huecos
     async obtenerClasesDisponibles() {
         try {
