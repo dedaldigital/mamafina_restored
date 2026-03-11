@@ -354,17 +354,16 @@ module.exports = async function handler(req, res) {
             else if (data.includes("CERRAR_CONSULTA")) {
                 await responderBoton(callback_query.id);
                 
-                // ✂️ Cortamos por el separador | y nos quedamos con la segunda parte
-                const partes = data.split('|');
-                const idConsulta = partes[1] ? partes[1].trim() : null;
-
+             
+                const idConsulta = data.split('|')[1] || data.split('_')[1]; 
+                
+                console.log("🔍 ID EXTRAÍDO FINAL:", idConsulta); // Si esto sale 'undefined', el botón está vacío
+            
                 if (!idConsulta) {
-                    console.error("❌ No se pudo extraer el ID de:", data);
+                    await enviarMensajeSimple(chatId, "⚠️ Error: El botón no contiene el ID de la consulta.");
                     return res.status(200).json({ ok: true });
                 }
-
-                console.log("🔍 ID enviado a Airtable:", idConsulta); // Mira esto en los logs de Vercel
-
+            
                 const mensajeResultado = await orderService.closeConsultation(idConsulta);
                 await editarMensaje(chatId, messageId, mensajeResultado);
                 return res.status(200).json({ ok: true });
