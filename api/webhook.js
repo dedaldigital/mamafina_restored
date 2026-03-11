@@ -5,6 +5,8 @@ const imgbbService = require('../services/imgbbService');
 const geminiService = require('../services/geminiService');
 const fetch = require('node-fetch');
 
+const taskService = require('../services/taskService');
+
 // 🎒 LA MOCHILA (Fuera del handler)
 let cacheFotos = {};
 
@@ -320,35 +322,18 @@ module.exports = async function handler(req, res) {
     
             // BOTONES TAREAS
 
-            //Marcar como completada
-            else if (data.startsWith("EJECUTAR_BORRADO|")) {
-                const idTarea = data.split('|')[1];
-                await airtableService.completarTarea(idTarea);
-                await editarMensaje(chatId, messageId, "✅ *¡Tarea terminada!* Archivada en el Bloc de Notas.");
+            //Botones de prioridad 
+            if (data.startsWith("PRIO|")) {
+                const textoConfirmacion = await taskService.confirmTaskCreation(data);
+                await editarMensaje(chatId, messageId, textoConfirmacion);
                 return res.status(200).json({ ok: true });
             }
-
-            // Eliminar
-            else if (data.startsWith("ELIMINAR_TAREA|")) {
-                const idTarea = data.split('|')[1];
-                try {
-                    // Llamada al servicio con el nombre corregido
-                    await airtableService.eliminarTarea(idTarea); 
-                    await editarMensaje(chatId, messageId, "🗑️ *Tarea eliminada permanentemente.*");
-                } catch (e) {
-                    console.error("💥 Error borrando:", e.message);
-                    await enviarMensajeSimple(chatId, "⚠️ No pude eliminar la tarea de la base de datos.");
-                }
-                return res.status(200).json({ ok: true });
-            }
-
-            // Guardar con prioridad
-            else if (data.startsWith("PRIO|")) {
-                const [, prioridad, tareaTexto] = data.split('|');
-                await airtableService.crearTarea(tareaTexto, prioridad);
-                await editarMensaje(chatId, messageId, `✅ *Tarea guardada:* ${tareaTexto} (${prioridad})`);
-                return res.status(200).json({ ok: true });
             
+            //Boton de eliminar
+            else if (data.startsWith("EJECUTAR_BORRADO|") || data.startsWith("ELIMINAR_TAREA|")) {
+                const textoResultado = await taskService.handleTaskAction(data);
+                await editarMensaje(chatId, messageId, textoResultado);
+                return res.status(200).json({ ok: true });
             }
 
             // BOTONES GESTION DE CONSULTAS
@@ -1334,40 +1319,28 @@ module.exports = async function handler(req, res) {
 
                  // COMANDOS PARA TAREAS
 
-                //Nueva tarea
-                else if (textoMinus.startsWith("tarea:")) {
-                    const cont = textoRecibido.replace(/tarea:/i, "").trim();
-                    const btnsT = [[
-                        { text: "🔴 Alta", callback_data: `PRIO|Alta|${cont}` },
-                        { text: "🟡 Media", callback_data: `PRIO|Media|${cont}` },
-                        { text: "🟢 Baja", callback_data: `PRIO|Baja|${cont}` }
-                    ]];
-                    await enviarMensajeConBotones(chatId, `¿Qué prioridad le damos a: "${cont}"?`, btnsT);
+                // Caso A: Crear nueva tarea
+                if (textoMinus.startsWith("tarea:")) {
+                    const response = await taskService.handleTaskInput(chatId, textoRecibido);
+                    await enviarMensajeConBotones(chatId, response.text, response.buttons);
                     return res.status(200).json({ ok: true });
                 }
 
-                // Tareas pendientes
-                
+               // Caso B: Ver lista de tareas
                 else if (textoMinus.includes("tareas") || textoMinus.includes("pendientes")) {
-                    const tareas = await airtableService.getTareasPendientes();
-                    if (!tareas || tareas.length === 0) {
-                        await enviarMensajeSimple(chatId, "✅ No hay tareas pendientes.");
-                    } else {
-                        await enviarMensajeSimple(chatId, "📋 *TAREAS PENDIENTES:*");
-                        for (const t of tareas) {
-                            const p = t.fields.Prioridad || "Media";
-                            const emoji = p === "Alta" ? "🔴" : (p === "Baja" ? "🟢" : "🟡");
-                            
-                            const botones = [[
-                                { text: "✅ Terminar", callback_data: `EJECUTAR_BORRADO|${t.id}` },
-                                { text: "🗑️ Eliminar", callback_data: `ELIMINAR_TAREA|${t.id}` }
-                            ]];
-                            
-                            await enviarMensajeConBotones(chatId, `${emoji} *[${p}]* ${t.fields.Tarea}`, botones);
+                    const listData = await taskService.formatTaskList();
+                    
+                    if (listData.blocks) {
+                        // Si hay tareas, enviamos el encabezado y luego cada tarea con sus botones
+                        await enviarMensajeSimple(chatId, listData.text);
+                        for (const block of listData.blocks) {
+                            await enviarMensajeConBotones(chatId, block.text, block.buttons);
                         }
+                    } else {
+                        await enviarMensajeSimple(chatId, listData.text);
                     }
                     return res.status(200).json({ ok: true });
-                }
+}
                 
                 // COMANDOS DE PURGA
                 if (textoMinus === "/purgar" || textoMinus === "limpiar todo") {
