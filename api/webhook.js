@@ -7,6 +7,7 @@ const fetch = require('node-fetch');
 
 const taskService = require('../services/taskService');
 const inventoryService = require('../services/inventoryService');
+const orderService = require('../services/orderService'); // <--- AÑADE ESTA LÍNEA
 
 // 🎒 LA MOCHILA (Fuera del handler)
 let cacheFotos = {};
@@ -265,7 +266,7 @@ module.exports = async function handler(req, res) {
 
             
        
-            // BOTONOES DE INVENTARIO
+            // BOTONOES DE INVENTARIO 🫧 LIMPIO
 
             //Iniciar venta
             if (data.startsWith("INICIAR_VENTA|")) {
@@ -281,7 +282,7 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
-            // BOTONES PEDIDOS
+            // BOTONES PEDIDOS 🫧 LIMPIO
 
             //Menú de estados
 
@@ -308,7 +309,7 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
     
-            // BOTONES TAREAS
+            // BOTONES TAREAS 🫧 LIMPIO
 
             //Botones de prioridad 
             if (data.startsWith("PRIO|")) {
@@ -826,116 +827,46 @@ module.exports = async function handler(req, res) {
                 if (esRespuesta) {
                     const replyText = message.reply_to_message.text;
                     const rTextLower = replyText.toLowerCase();
-                
-                    // RESPUESTAS INVENTARIO
 
-                    // Búsqueda directa
-                    if (rTextLower.includes("artículo buscas en el inventario")) {
-                        const busqueda = textoRecibido.trim();
-                        // Avisamos que estamos buscando para dar feedback visual
-                        await enviarMensajeSimple(chatId, `🔍 Buscando "${busqueda}"...`);
-                        
-                        const resultados = await airtableService.buscarEnTodoElInventario(busqueda);
-                        
-                        if (!resultados || resultados.length === 0) {
-                            await enviarMensajeSimple(chatId, `❌ No encontré "${busqueda}" en el inventario.`);
-                        } else {
-                            for (const r of resultados) {
-                                const nombre = r.fields?.Articulo || "Sin nombre";
-                                const stock = r.fields?.Stock ?? 0;
-                                const tipoEmoji = r.tipo || "📦";
-                                const tablaKey = r.tipo.includes('Tela') ? 'telas' : 
-                                                r.tipo.includes('Producto') ? 'productos' : 'inventario';
-
-                                const txt = `${tipoEmoji}\n📦 *${nombre}*\n🔹 Cantidad: **${stock}**`;
-
-                                await enviarMensajeConBotones(chatId, txt, [[{ 
-                                    text: "🛒 Registrar Venta", 
-                                    callback_data: `INICIAR_VENTA|${r.id}|${nombre}|${tablaKey}` 
-                                }]]);
-                            }
-                        }
-                        return res.status(200).json({ ok: true }); // ✅ Cierre vital para romper el bucle
-                    }
-                
-                    // VISUALIZAR
-
-                    // Elegimos tela
-                    if (rTextLower.includes("tela buscamos")) {
-                        const telas = await airtableService.buscarTelas(textoRecibido.trim());
-                        for (const t of telas) {
-                            await enviarMensajeConBotones(chatId, `🧵 *Tela:* ${t.fields.Articulo}`, [[{ text: "✨ Elegir", callback_data: `TELA_SEL|${t.id.slice(-5)}` }]]);
-                        }
+                    // 1. GESTIÓN DE VENTAS 🫧 LIMPIO
+                    // No usa metadatos, lee directamente el texto del prompt de venta
+                    if (replyText.includes("¿Cuántas unidades vendidas de:")) {
+                        await enviarMensajeSimple(chatId, "⏳ Actualizando stock...");
+                        const saleResult = await inventoryService.executeSale(replyText, textoRecibido, user);
+                        await enviarMensajeSimple(chatId, saleResult.text);
                         return res.status(200).json({ ok: true });
                     }
-                
-                    // Elegimos producto
-                    if (rTextLower.includes("producto vamos a confeccionar")) {
-                        const productos = await airtableService.buscarProductos(textoRecibido.trim());
-                        for (const p of productos) {
-                            await enviarMensajeConBotones(chatId, `👗 *Producto:* ${p.fields.Articulo}`, [[{ text: "✨ Elegir", callback_data: `PROD_SEL|${p.id}` }]]);
-                        }
-                        return res.status(200).json({ ok: true });
-                    }
-                
-                    // PEDIDOS 
 
-                    // Pasos para borrador activo
+                    // 2. GESTIÓN DE PEDIDOS 🫧 LIMPIO
+                    // No usa metadatos, detecta las preguntas del flujo de borrador
                     const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
-
                     if (borradorPedido && borradorPedido.id) {
-                        const rText = replyText.toLowerCase();
-
-                        // PASO 1: DETALLE DEL PEDIDO
-                        if (rText.includes("producto o arreglo encarga")) {
-                            await airtableService.actualizarPedido(borradorPedido.id, { "Pedido_Detalle": textoRecibido });
-                            await enviarMensajeConReply(chatId, "📝 Anotado. ¿Cuál es el **Nombre del Cliente**?");
-                            return res.status(200).json({ ok: true });
+                        // Delegamos el flujo de preguntas (Detalle, Nombre, Teléfono, Fecha) al servicio
+                        const nextPrompt = await orderService.handleOrderWorkflow(chatId, replyText.toLowerCase(), textoRecibido, borradorPedido.id);
+                        
+                        if (nextPrompt.includes("COMPLETADO")) {
+                            await enviarMensajeSimple(chatId, nextPrompt);
+                        } else {
+                            await enviarMensajeConReply(chatId, nextPrompt);
                         }
-                        // PASO 2: NOMBRE DEL CLIENTE
-                        else if (rText.includes("nombre del cliente")) {
-                            await airtableService.actualizarPedido(borradorPedido.id, { "Nombre_Cliente": textoRecibido });
-                            await enviarMensajeConReply(chatId, `📱 ¿Qué **Teléfono** tiene ${textoRecibido}?`);
-                            return res.status(200).json({ ok: true });
-                        }
-                        // PASO 3: TELÉFONO (Detecta varias formas de preguntar)
-                        else if (rText.includes("teléfono") || rText.includes("móvil") || rText.includes("contacto")) {
-                            await airtableService.actualizarPedido(borradorPedido.id, { "Telefono": textoRecibido });
-                            await enviarMensajeConReply(chatId, "📅 ¿Para qué **Fecha de entrega** es?");
-                            return res.status(200).json({ ok: true });
-                        }
-                        // PASO 4: FECHA DE ENTREGA (Cierre del pedido)
-                        else if (rText.includes("fecha de entrega") || rText.includes("cuándo lo entregamos")) {
-                            await airtableService.actualizarPedido(borradorPedido.id, { 
-                                "Fecha_Entrega": textoRecibido, 
-                                "Estado": "📥 Pendiente", 
-                                "ID_Sesion": "" // Importante: Cerramos el borrador aquí
-                            });
-                            await enviarMensajeSimple(chatId, `✅ *PEDIDO COMPLETADO*\n👤 Cliente: ${borradorPedido.fields.Nombre_Cliente || 'Nuevo'}\n🧵 Detalle: ${borradorPedido.fields.Pedido_Detalle || 'Consultar'}`);
-                            return res.status(200).json({ ok: true });
-                        }
+                        return res.status(200).json({ ok: true });
                     }
-
-                    // Metadatos
-    
+                    
+                    // 3. FLUJOS BASADOS EN METADATOS (IA Vision y Academia) 🫧 LIMPIO
+                    const metadata = extraerMetadata(replyText);
                     if (metadata && metadata.step) {
                         const paso = metadata.step;
-                        const textoMinus = textoRecibido.toLowerCase(); // Normalizamos el texto para comparaciones
-                    
-                        // --- FLUJO A: INVENTARIO (IA VISION) ---
-                        // Si el paso empieza por "ESPERANDO_", delegamos la lógica al especialista de inventario
+
+                        // A. INVENTARIO IA (ESPERANDO_NOMBRE, etc.) 🫧 LIMPIO
                         if (paso.startsWith("ESPERANDO_")) {
                             const result = await inventoryService.handleInventoryIAWorkflow(chatId, metadata, textoRecibido);
-                            
-                            // Decidimos si forzar respuesta (reply) o enviar un mensaje normal según lo que diga el servicio
                             if (result.type === 'reply') {
                                 await enviarMensajeConReply(chatId, result.text);
                             } else {
                                 await enviarMensajeSimple(chatId, result.text);
                             }
-                            return res.status(200).json({ ok: true }); // Cortamos la ejecución: misión cumplida [cite: 69]
+                            return res.status(200).json({ ok: true });
                         }
-                    
                         // --- FLUJO B: ACADEMIA (ALUMNAS) ---
                         // Si el paso empieza por "ACAD_", mantenemos la lógica aquí hasta que creemos su propio servicio
                         if (paso.startsWith("ACAD_")) {
@@ -1004,103 +935,37 @@ module.exports = async function handler(req, res) {
                             return res.status(200).json({ ok: true });
                         }
 
-                        // Guardado
-                        else if (paso === "ESPERANDO_STOCK") { 
-                            metadata.stock = parseInt(textoRecibido) || 0;
-                            metadata.step = "FINALIZADO";
-                            
-                            await enviarMensajeSimple(chatId, "⏳ **Guardando en el inventario...**");
-                            
-                            try {
-                                const fotoId = metadata.fotoId; 
-                                if (fotoId) {
-                                    // 1. Recuperamos el archivo de Telegram
-                                    const fileRes = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/getFile?file_id=${fotoId}`);
-                                    const fileJson = await fileRes.json();
-                                    
-                                    if (fileJson.ok) {
-                                        const urlTele = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileJson.result.file_path}`;
-                                        
-                                        // 2. Subida Crítica a ImgBB 
-                                        const urlFinal = await imgbbService.subirAFotoUsuario(urlTele);
-                                        
-                                        if (urlFinal) {
-                                            metadata.urlImgBB = urlFinal; // Se guarda en metadata para Airtable
-                                            console.log("📸 URL Generada con éxito:", urlFinal);
-                                        }
-                                    }
-                                }
-                        
-                                // 3. Llamada al servicio con los metadatos completos 
-                                // Se ejecuta fuera del 'if (fotoId)' pero dentro del 'try' principal
-                                await airtableService.crearRegistroDesdeIA(metadata.nombre, metadata);
-                                
-                                const conFoto = metadata.urlImgBB ? "🖼️ ✅ Con foto" : "⚠️ Sin foto";
-                                await enviarMensajeSimple(chatId, `🎉 **¡Inventario Actualizado!**\n📦 ${metadata.nombre}\n${conFoto}`);
-                        
-                            } catch (e) {
-                                console.error("💥 Error en el proceso final:", e.message);
-                                await enviarMensajeSimple(chatId, "❌ Hubo un problema al guardar en el sistema, pero el registro se ha intentado procesar.");
-                            }
-                        
-                            return res.status(200).json({ ok: true }); // Cierre del pararrayos 
-                        }
-
-                        if (metadata && metadata.step) {
-                            if (metadata.step === "ACAD_ESP_PROYECTO") {
-                                metadata.proyecto = textoRecibido;
-                                metadata.step = "ACAD_ESP_TECNICO";
-                                await enviarMensajeConReply(chatId, `🧵 ¡Qué bonito! ¿Y qué **Número de Aguja** o ganchillo estás usando?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
-                            }
-                            else if (metadata.step === "ACAD_ESP_TECNICO") {
-                                metadata.notas = textoRecibido;
-                                
-                                await enviarMensajeSimple(chatId, "⏳ Guardando tus avances en el costurero digital...");
-                                
-                                // Buscamos si ya existe la alumna para actualizar o crear
-                                const fichaExistente = await airtableService.obtenerFichaAlumna(chatId);
-                                
-                                const campos = {
-                                    "Telegram_ID": String(chatId),
-                                    "Proyecto_Actual": metadata.proyecto,
-                                    "Notas_Tecnicas": `Aguja: ${metadata.notas}`
-                                };
-                        
-                                if (fichaExistente) {
-                                    await airtableService.base('Alumnas_Comunidad').update(fichaExistente.id, campos);
-                                } else {
-                                    await airtableService.base('Alumnas_Comunidad').create([{ fields: campos }]);
-                                }
-                        
-                                await enviarMensajeSimple(chatId, `✅ ¡Listo, cariño! Ya he anotado tu avance en *${metadata.proyecto}*. Cuando quieras recordarlo, solo tienes que pedírmelo. ✨`);
-                            }
-
-                            if (metadata.step === "ACAD_ESP_TECNICO") {
-                                metadata.notas = textoRecibido;
-                                metadata.step = "ACAD_ESP_FOTO"; // Nuevo paso
-                                
-                                await enviarMensajeConReply(chatId, 
-                                    `📸 ¡Anotado! **Aguja: ${metadata.notas}**.\n\nPara terminar, ¿me envías una **foto de cómo va tu labor**? Me encanta ver vuestros progresos. ✨\n\n(Escribe 'no' si prefieres no enviarla ahora).\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
-                                return res.status(200).json({ ok: true });
-                        }
-                    }
-
-                        // RESPUESTAS DE TAREA
+                        // Respuesta a la creación de una tarea (Descripción -> Prioridad)
                         else if (replyText.includes("Escribe la descripción de la tarea")) {
-                            const botonesPrio = [[{ text: "🔴 Alta", callback_data: `Alta|${textoRecibido}` }, { text: "🟡 Media", callback_data: `Media|${textoRecibido}` }, { text: "🟢 Baja", callback_data: `Baja|${textoRecibido}` }]];
-                            await enviarMensajeConBotones(chatId, `¿Qué prioridad le damos a: "${textoRecibido}"?`, botonesPrio);
-                            return res.status(200).json({ ok: true });
+                            // Delegamos la lógica de botones y texto al servicio de tareas
+                            const taskData = await taskService.handleTaskInput(chatId, textoRecibido);
+                            
+                            await enviarMensajeConBotones(chatId, taskData.text, taskData.buttons);
+                            return res.status(200).json({ ok: true }); // Cortamos ejecución con éxito
                         }
 
-                        // RESPUESTAS DE VENTA
-                        else if (replyText.includes("¿Cuántas unidades vendidas de:")) {
-                            await enviarMensajeSimple(chatId, "⏳ Actualizando stock...");
-                            const saleResult = await inventoryService.executeSale(replyText, textoRecibido, user);
-                            await enviarMensajeSimple(chatId, saleResult.text);
-                            return res.status(200).json({ ok: true });
-                        }
+                          // VISUALIZAR
 
-                    }//CIERRE ESRESPUESTAS
+                    // Elegimos tela
+                    if (rTextLower.includes("tela buscamos")) {
+                        const telas = await airtableService.buscarTelas(textoRecibido.trim());
+                        for (const t of telas) {
+                            await enviarMensajeConBotones(chatId, `🧵 *Tela:* ${t.fields.Articulo}`, [[{ text: "✨ Elegir", callback_data: `TELA_SEL|${t.id.slice(-5)}` }]]);
+                        }
+                        return res.status(200).json({ ok: true });
+                    }
+                
+                    // Elegimos producto
+                    if (rTextLower.includes("producto vamos a confeccionar")) {
+                        const productos = await airtableService.buscarProductos(textoRecibido.trim());
+                        for (const p of productos) {
+                            await enviarMensajeConBotones(chatId, `👗 *Producto:* ${p.fields.Articulo}`, [[{ text: "✨ Elegir", callback_data: `PROD_SEL|${p.id}` }]]);
+                        }
+                        return res.status(200).json({ ok: true });
+                    }
+                
+   
+                }//CIERRE ESRESPUESTAS
                    
  
 
