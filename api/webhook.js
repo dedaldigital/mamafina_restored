@@ -389,6 +389,13 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
+            // BOTÓN: CONSULTAR ESTADO DE PEDIDO (#REF)
+            else if (data === "CLI_ESTADO") {
+                // Forzamos la respuesta para que el bot "escuche" el siguiente mensaje
+                await enviarMensajeConReply(chatId, "🔎 Por favor, escribe tu **Número de Pedido** (ej: #REF-1234) para buscar tu encargo:");
+                return res.status(200).json({ ok: true });
+            }
+
             // VOLVER AL INICIO
             else if (data === "CLI_INICIO") {
                 // CAMBIO AQUÍ: Añadir el prefijo escaparateService.
