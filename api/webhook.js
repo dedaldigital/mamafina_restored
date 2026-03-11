@@ -553,12 +553,28 @@ module.exports = async function handler(req, res) {
             else if (data.startsWith("INT_PEDIDO_")) {
                 const idPedido = data.replace("INT_PEDIDO_", "");
                 const abierta = escaparateService.estaLaTiendaAbierta();
+                // Buscamos el registro real
                 const pedidoData = await airtableService.obtenerPedidoPorId(idPedido);
+            
+                if (!pedidoData) {
+                    await enviarMensajeSimple(chatId, "⚠️ No he podido encontrar los detalles de ese pedido.");
+                    return res.status(200).json({ ok: true });
+                }
+            
+                // ✨ CORRECCIÓN: Accedemos a .fields.Pedido_Detalle
+                const detallePedido = pedidoData.fields.Pedido_Detalle || "mi pedido";
             
                 if (abierta) {
                     await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
-                    const linkWA = await formatearLinkWA("636796210", "Reyes y Begoña", `Hola! Soy cliente y quería consultar sobre mi pedido: ${pedidoData.detalle}`);
-                    await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras:", [[{ text: "📲 WhatsApp", url: linkWA }]]);
+                    const mensajeConsulta = `¡Hola! Soy cliente y quería consultar sobre mi pedido de: ${detallePedido}`;
+                    
+                    // Usamos el servicio oficial para el link
+                    const linkWA = await escaparateService.formatearLinkWA("636796210", "Reyes y Begoña", mensajeConsulta);
+                    
+                    await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras:", [
+                        [{ text: "📲 WhatsApp", url: linkWA }]
+                    ]);
+                    
                 } else {
                     await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
                     await airtableService.registrarConsultaAutomatica(chatId, user, pedidoData.nombre, pedidoData.telefono, pedidoData.detalle);
@@ -873,19 +889,21 @@ module.exports = async function handler(req, res) {
                         );
 
                         if (result.isFinal) {
-                            // ✨ AQUÍ SE DEFINE LA REFERENCIA PARA WHATSAPP
-                            const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código de seguimiento es: ${result.ticketId}. Puedes usarlo aquí para ver el estado. 🧵`;
+                            // ✨ Usamos result.ticketNum para que en el WhatsApp solo salgan los números
+                            const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código es: ${result.ticketNum}. Úsalo aquí mismo para ver cómo va tu encargo. 🧵`;
                             
                             const linkWA = await escaparateService.formatearLinkWA(
                                 result.clienteTelefono, 
                                 result.clienteNombre, 
                                 mensajeWA
                             );
-
+                        
                             await enviarMensajeConBotones(chatId, result.text, [
                                 [{ text: "📲 Enviar Ticket por WhatsApp", url: linkWA }]
                             ]);
-                        } else {
+                        }
+
+                         else {
                             await enviarMensajeConReply(chatId, result.text);
                         }
                         return res.status(200).json({ ok: true });
@@ -1298,6 +1316,7 @@ module.exports = async function handler(req, res) {
                 }
             
                 // 🫧 LIMPIO: NUEVO INTERCEPTOR DE TICKET (#REF) PARA CLIENTES
+
                 const esRespuestaAlTicket = esRespuesta && 
                 (message.reply_to_message.text.includes("Número de Pedido") || 
                 message.reply_to_message.text.includes("#REF"));
