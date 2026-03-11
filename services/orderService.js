@@ -10,32 +10,44 @@ class OrderService {
 
     // 2. Gestiona el flujo de preguntas (Detalle -> Nombre -> Teléfono -> Fecha) 
     async handleOrderWorkflow(chatId, step, text, borradorId) {
+        // 1. IMPORTANTE: Recuperamos el borrador para tener los datos guardados en pasos anteriores
+        const borrador = await airtableService.getPedidoPorId(borradorId);
+        
         const updates = {};
-        let nextMsg = "";
+        // 2. Inicializamos el objeto result para que siempre devuelva algo válido
+        let result = { text: "", isFinal: false };
     
         if (step.includes("producto o arreglo")) {
             updates.Pedido_Detalle = text;
-            nextMsg = "📝 Anotado. ¿Cuál es el **Nombre del Cliente**?";
+            result.text = "📝 Anotado. ¿Cuál es el **Nombre del Cliente**?";
         } else if (step.includes("nombre del cliente")) {
             updates.Nombre_Cliente = text;
-            nextMsg = `📱 ¿Qué **Teléfono** tiene ${text}?`;
+            result.text = `📱 ¿Qué **Teléfono** tiene ${text}?`;
         } else if (step.includes("teléfono")) {
             updates.Telefono = text;
-            nextMsg = "📅 ¿Para qué **Fecha de entrega** es?";
+            result.text = "📅 ¿Para qué **Fecha de entrega** es?";
         } else if (step.includes("fecha de entrega")) {
-            // ✨ LA MAGIA: Generamos el código único de seguridad
+            // ✨ Generamos el código único de seguridad #REF [cite: 66, 70]
             const ticketId = `#REF-${Date.now().toString().slice(-4)}`;
             
             updates.Fecha_Entrega = text;
             updates.Estado = "📥 Pendiente";
-            updates.ID_Pedido_Unico = ticketId; // Asegúrate de tener este campo en Airtable
-            updates.ID_Sesion = ""; 
+            updates.ID_Pedido_Unico = ticketId; 
+            updates.ID_Sesion = ""; // Cerramos el borrador
             
-            nextMsg = `✅ *PEDIDO COMPLETADO*\n\n🎫 El número de seguimiento es: **${ticketId}**\n\nPor favor, dáselo al cliente. Lo necesitará para consultar su estado.`;
+            result.text = `✅ *PEDIDO COMPLETADO*\n\n🎫 Código de seguimiento: **${ticketId}**`;
+            result.isFinal = true;
+            
+            // 3. Pasamos los datos para el botón de WhatsApp del webhook
+            result.ticketId = ticketId;
+            // Si el nombre se acaba de escribir en este paso, lo cogemos de updates, si no, del borrador
+            result.clienteNombre = updates.Nombre_Cliente || borrador.fields.Nombre_Cliente;
+            result.clienteTelefono = updates.Telefono || borrador.fields.Telefono;
         }
     
+        // Guardamos los cambios en Airtable
         await airtableService.actualizarPedido(borradorId, updates);
-        return nextMsg;
+        return result;
     }
 
     // 3. MENÚ DE ESTADOS: Devuelve los botones para cambiar la fase del pedido 

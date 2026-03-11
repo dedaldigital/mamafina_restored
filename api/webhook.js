@@ -443,7 +443,7 @@ module.exports = async function handler(req, res) {
                 await enviarMensajeConBotones(chatId, "¿Ayudo en algo más?", [[{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]]);
                 return res.status(200).json({ ok: true }); 
             }
-            
+
             // CATÁLOGO DE TELAS 
             else if (data === "CLI_TELAS") {
                 await responderBoton(callback_query.id);
@@ -854,19 +854,41 @@ module.exports = async function handler(req, res) {
                         return res.status(200).json({ ok: true });
                     }
 
-                    // 🫧 LIMPIO 3. FLUJO DE PEDIDOS (Borradores paso a paso) 🫧 LIMPIO
-                    // Gestiona el proceso de anotar Detalle -> Nombre -> Teléfono -> Fecha
+                    // 🫧 LIMPIO 3. FLUJO DE PEDIDOS (Borradores paso a paso)
                     const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
+
                     if (borradorPedido && borradorPedido.id) {
-                        const nextPrompt = await orderService.handleOrderWorkflow(chatId, replyText.toLowerCase(), textoRecibido, borradorPedido.id);
-                        if (nextPrompt.includes("COMPLETADO")) {
-                            await enviarMensajeSimple(chatId, nextPrompt);
-                        } else {
-                            await enviarMensajeConReply(chatId, nextPrompt);
+                        // 1. Guardamos el objeto completo en 'result'
+                        const result = await orderService.handleOrderWorkflow(
+                            chatId, 
+                            replyText.toLowerCase(), 
+                            textoRecibido, 
+                            borradorPedido.id
+                        );
+
+                        // 2. Si el pedido ha terminado, mostramos el botón de WhatsApp
+                        if (result.isFinal) {
+                            const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código de seguimiento es: ${result.ticketId}. Puedes usarlo aquí mismo para ver cómo va tu encargo. 🧵`;
+                            
+                            const linkWA = await escaparateService.formatearLinkWA(
+                                result.clienteTelefono, 
+                                result.clienteNombre, 
+                                mensajeWA
+                            );
+
+                            await enviarMensajeConBotones(chatId, result.text, [
+                                [{ text: "📲 Enviar Ticket por WhatsApp", url: linkWA }]
+                            ]);
+                        } 
+                        // 3. Si no ha terminado, seguimos pidiendo datos (Nombre, Teléfono, etc.)
+                        else {
+                            await enviarMensajeConReply(chatId, result.text);
                         }
+
+                        // 4. Respondemos a Telegram y cerramos este flujo
                         return res.status(200).json({ ok: true });
                     }
-                                
+                                                    
                     
                     //  🫧 LIMPIO 4. FLUJOS BASADOS EN METADATOS (IA Vision y Academia) 🫧 LIMPIO
                     const metadata = extraerMetadata(replyText);
