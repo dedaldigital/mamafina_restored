@@ -1,4 +1,6 @@
 const airtableService = require('./airtableService');
+const imgbbService = require('./imgbbService');
+const fetch = require('node-fetch');
 
 class InventoryService {
     
@@ -38,8 +40,14 @@ class InventoryService {
     }
 
     // 2. Prepara el flujo de venta (Pide la cantidad)
+    // services/inventoryService.js
     async prepareSale(data) {
-        const [, id, nombre, tabla] = data.split('|');
+        // data viene como: "INICIAR_VENTA|ID_AIRTABLE|NOMBRE|TABLA"
+        const partes = data.split('|');
+        const id = partes[1];
+        const nombre = partes[2];
+        const tabla = partes[3];
+
         return {
             text: `✍️ ¿Cuántas unidades vendidas de: *${nombre}*?\n\n(Responde solo el número. ID:${id}|TABLA:${tabla})`,
             forceReply: true
@@ -91,6 +99,78 @@ class InventoryService {
             };
         }
     }
-}
 
-module.exports = new InventoryService();
+   // 5. Gesto de flujo IA (Cuestionario Nombre > Ref)
+
+   // Recibe el chatId, los metadatos actuales y el texto que acaba de escribir el usuario.
+
+   async handleInventoryIAWorkflow(chatId, metadata, text) {
+    const paso = metadata.step;
+    const textoMinus = text.toLowerCase();
+    
+    // PASO: CAPTURAR NOMBRE
+    if (paso === "ESPERANDO_NOMBRE") {
+        metadata.nombre = text;
+        metadata.step = "ESPERANDO_REFERENCIA";
+        return {
+            text: `🏷️ **Nombre:** ${metadata.nombre}\n¿Qué **Referencia** tiene? (Escribe 'no')\n\n(DATOS_IA: ${JSON.stringify(metadata)})`,
+            type: 'reply'
+        };
+    } 
+
+    // PASO: CAPTURAR REFERENCIA (O IGNORARLA)
+    else if (paso === "ESPERANDO_REFERENCIA") {
+        metadata.referencia = textoMinus === 'no' ? "" : text;
+        metadata.step = "ESPERANDO_PRECIO";
+        return {
+            text: `Ref: *${metadata.referencia || 'N/A'}*\n¿Qué **Precio** tiene? (Escribe '0')\n\n(DATOS_IA: ${JSON.stringify(metadata)})`,
+            type: 'reply'
+        };
+    }
+
+    // PASO: CAPTURAR PRECIO
+    else if (paso === "ESPERANDO_PRECIO") {
+        metadata.precio = parseFloat(text.replace(',', '.')) || 0;
+        metadata.step = "ESPERANDO_STOCK";
+        return {
+            text: `💰 Precio: *${metadata.precio}*\n¿Qué **Cantidad (Stock)** hay?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`,
+            type: 'reply'
+        };
+    }
+
+    // PASO FINAL: CAPTURAR STOCK + SUBIR FOTO A IMGBB + GUARDAR EN AIRTABLE
+    else if (paso === "ESPERANDO_STOCK") {
+        metadata.stock = parseInt(text) || 0;
+        metadata.step = "FINALIZADO";
+
+        try {
+            const fotoId = metadata.fotoId;
+            if (fotoId) {
+                const fileRes = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/getFile?file_id=${fotoId}`);
+                const fileJson = await fileRes.json();
+                
+                if (fileJson.ok) {
+                    const urlTele = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileJson.result.file_path}`;
+                    const urlFinal = await imgbbService.subirAFotoUsuario(urlTele); // [cite: 45]
+                    if (urlFinal) metadata.urlImgBB = urlFinal;
+                }
+            }
+
+            await airtableService.crearRegistroDesdeIA(metadata.nombre, metadata);
+            const conFoto = metadata.urlImgBB ? "🖼️ ✅ Con foto" : "⚠️ Sin foto";
+            
+            return {
+                text: `🎉 **¡Inventario Actualizado!**\n📦 ${metadata.nombre}\n${conFoto}`,
+                type: 'simple'
+            };
+        } catch (e) {
+            console.error("💥 Error en el proceso final de inventario:", e.message);
+            return {
+                text: "❌ Hubo un problema al guardar en el sistema, pero el registro se ha intentado procesar.",
+                type: 'simple'
+            };
+        }
+    }
+}
+}
+module.exports = new InventoryService()

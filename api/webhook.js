@@ -284,36 +284,28 @@ module.exports = async function handler(req, res) {
             // BOTONES PEDIDOS
 
             //Menú de estados
+
+
+            // A. Mostrar el menú de cambio de estado 
             else if (data.startsWith("ESTADO_MENU|")) {
                 const idPedido = data.split('|')[1];
-                const botonesEstado = [
-                    [{ text: "📥 Pendiente", callback_data: `SET_ESTADO|${idPedido}|📥 Pendiente` }, { text: "🧵 En curso", callback_data: `SET_ESTADO|${idPedido}|🧵 En curso` }],
-                    [{ text: "✅ Terminado", callback_data: `SET_ESTADO|${idPedido}|✅ Terminado` }, { text: "🚚 Entregado", callback_data: `SET_ESTADO|${idPedido}|🚚 Entregado` }]
-                ];
-                await editarMensajeConBotones(chatId, messageId, "¿A qué estado quieres pasar el pedido?", botonesEstado);
+                const menu = await orderService.getStatusMenu(idPedido);
+                await editarMensajeConBotones(chatId, messageId, menu.text, menu.buttons);
                 return res.status(200).json({ ok: true });
             }
 
-            //Aplicar nuevo estado
+            // B. Ejecutar el cambio de estado y avisar por WhatsApp 
             else if (data.startsWith("SET_ESTADO|")) {
                 const [, idPedido, nuevoEstado] = data.split('|');
-                await airtableService.cambiarEstadoPedido(idPedido, nuevoEstado);
-                await editarMensaje(chatId, messageId, `✅ Estado actualizado a: *${nuevoEstado}*`);
+                const result = await orderService.updateOrderStatus(idPedido, nuevoEstado);
                 
-                if (nuevoEstado === "✅ Terminado") {
-                    const ped = await airtableService.getPedidoPorId(idPedido);
-                    const link = await formatearLinkWA(ped.fields.Telefono, ped.fields.Nombre_Cliente, "¡Hola {nombre}! Tu pedido está listo. ✨");
-                    if (link) {
-                        await enviarMensajeConBotones(chatId, `🎊 ¡Avisar a ${ped.fields.Nombre_Cliente}!`, [
-                            [{ text: "📲 WhatsApp", url: link }]
-                            ]);
-                        }
-
-                    return res.status(200).json({ ok: true });
+                await editarMensaje(chatId, messageId, result.text);
+                
+                // Si el servicio nos devuelve un botón de aviso (porque está terminado) 
+                if (result.button) {
+                    await enviarMensajeConBotones(chatId, result.extraMsg, result.button);
                 }
-
-                return res.status(200).json({ ok: true }); 
-
+                return res.status(200).json({ ok: true });
             }
     
             // BOTONES TAREAS
@@ -926,17 +918,27 @@ module.exports = async function handler(req, res) {
 
                     // Metadatos
     
-                    const metadata = extraerMetadata(replyText);
                     if (metadata && metadata.step) {
                         const paso = metadata.step;
+                        const textoMinus = textoRecibido.toLowerCase(); // Normalizamos el texto para comparaciones
                     
-                        // --- 1. PASO NUEVO: CORREGIR/AÑADIR NOMBRE REAL ---
-                        if (metadata && metadata.step) {
-                            const paso = metadata.step;
-                            const textoMinus = textoRecibido.toLowerCase(); // Definimos esto por seguridad
-                        
-                            // --- PASO: CAPTURAR NOMBRE REAL ---
-                            if (paso === "ACAD_ESP_NOMBRE_REAL") {
+                        // --- FLUJO A: INVENTARIO (IA VISION) ---
+                        // Si el paso empieza por "ESPERANDO_", delegamos la lógica al especialista de inventario
+                        if (paso.startsWith("ESPERANDO_")) {
+                            const result = await inventoryService.handleInventoryIAWorkflow(chatId, metadata, textoRecibido);
+                            
+                            // Decidimos si forzar respuesta (reply) o enviar un mensaje normal según lo que diga el servicio
+                            if (result.type === 'reply') {
+                                await enviarMensajeConReply(chatId, result.text);
+                            } else {
+                                await enviarMensajeSimple(chatId, result.text);
+                            }
+                            return res.status(200).json({ ok: true }); // Cortamos la ejecución: misión cumplida [cite: 69]
+                        }
+                    
+                        // --- FLUJO B: ACADEMIA (ALUMNAS) ---
+                        // Si el paso empieza por "ACAD_", mantenemos la lógica aquí hasta que creemos su propio servicio
+                        if (paso.startsWith("ACAD_")) {
                                 try {
                                     const nombreHumano = textoRecibido.trim();
                                     // Buscamos la ficha actual
@@ -1001,29 +1003,6 @@ module.exports = async function handler(req, res) {
                             await enviarMensajeConBotones(chatId, `Perfecto: "${metadata.nombre}". ¿En qué categoría lo guardamos?`, botonesCat);
                             return res.status(200).json({ ok: true });
                         }
-
-                        if (paso === "ESPERANDO_NOMBRE") {
-                            metadata.nombre = textoRecibido;
-                            metadata.step = "ESPERANDO_REFERENCIA";
-                            await enviarMensajeConReply(chatId, `🏷️ **Nombre:** ${metadata.nombre}\n¿Qué **Referencia** tiene? (Escribe 'no')\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
-                            return res.status(200).json({ ok: true }); // ✨ AÑADIDO: Cierre de paso
-                        } 
-                        else if (paso === "ESPERANDO_REFERENCIA") {
-                            metadata.referencia = textoMinus === 'no' ? "" : textoRecibido;
-                            metadata.step = "ESPERANDO_PRECIO";
-                            await enviarMensajeConReply(chatId, `Ref: *${metadata.referencia || 'N/A'}*\n¿Qué **Precio** tiene? (Escribe '0')\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
-                            return res.status(200).json({ ok: true }); // ✨ AÑADIDO: Cierre de paso
-                        }
-                        else if (paso === "ESPERANDO_PRECIO") {
-                            metadata.precio = parseFloat(textoRecibido.replace(',', '.')) || 0;
-                            metadata.step = "ESPERANDO_STOCK";
-                            await enviarMensajeConReply(chatId, `💰 Precio: *${metadata.precio}*\n¿Qué **Cantidad (Stock)** hay?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
-                            return res.status(200).json({ ok: true }); // ✨ AÑADIDO: Cierre de paso
-                        }
-                    }
-
-                        
-
 
                         // Guardado
                         else if (paso === "ESPERANDO_STOCK") { 
@@ -1291,8 +1270,8 @@ module.exports = async function handler(req, res) {
                         await enviarMensajeSimple(chatId, listData.text);
                     }
                     return res.status(200).json({ ok: true });
-}
-                
+
+                }
                 // COMANDOS DE PURGA
                 if (textoMinus === "/purgar" || textoMinus === "limpiar todo") {
                     const nTareas = await airtableService.vaciarHistorialTareas();
@@ -1336,7 +1315,7 @@ module.exports = async function handler(req, res) {
                 }
                 
                 return res.status(200).json({ ok: true });
-            } //CIERRE ESADMIN
+             }//CIERRE ESADMIN
 
             // FLUJO DE CLIENTES
 
@@ -1464,7 +1443,7 @@ module.exports = async function handler(req, res) {
                 }
             } //CIERRE FLUJO DE CLIENTES
             
-        } //CIERRE FLUJO DE TEXTO 
+         }//CIERRE FLUJO DE TEXTO 
 
 
 
@@ -1507,8 +1486,13 @@ module.exports = async function handler(req, res) {
 
     async function enviarMensajeConReply(chatId, texto) {
         await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: chatId, text: texto, reply_markup: { force_reply: true } })
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                chat_id: chatId, 
+                text: texto, 
+                reply_markup: { force_reply: true } // Esto es vital para que funcione
+            })
         });
     }
 
