@@ -864,16 +864,22 @@ module.exports = async function handler(req, res) {
                     // 🫧 LIMPIO 3. FLUJO DE PEDIDOS (Borradores paso a paso)
                     const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
 
-                    if (borradorPedido && borradorPedido.id) {
-                        const result = await orderService.handleOrderWorkflow(chatId, replyText.toLowerCase(), textoRecibido, borradorPedido.id);
+                    //Bloque de finalización de pedido
+                    if (result.isFinal) {
+                        // 1. Construimos el mensaje con la variable ticketId que viene del servicio
+                        const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código de seguimiento es: ${result.ticketId}. Puedes usarlo aquí para ver cómo va tu encargo. 🧵`;
+                        
+                        // 2. Pasamos el mensaje ya montado al formateador
+                        const linkWA = await escaparateService.formatearLinkWA(
+                            result.clienteTelefono, 
+                            result.clienteNombre, 
+                            mensajeWA
+                        );
+                    
+                        await enviarMensajeConBotones(chatId, result.text, [
+                            [{ text: "📲 Enviar Ticket por WhatsApp", url: linkWA }]
+                        ]);
 
-                        if (result.isFinal) {
-                            const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código es: ${result.ticketId}. 🧵`;
-                            const linkWA = await escaparateService.formatearLinkWA(result.clienteTelefono, result.clienteNombre, mensajeWA);
-                            await enviarMensajeConBotones(chatId, result.text, [[{ text: "📲 Enviar Ticket por WhatsApp", url: linkWA }]]);
-                        } else {
-                            await enviarMensajeConReply(chatId, result.text);
-                        }
                         return res.status(200).json({ ok: true });
                     }
 

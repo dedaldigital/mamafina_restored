@@ -49,24 +49,39 @@ class EscaparateService {
 
 
 // Procesa la búsqueda de pedidos filtrando por número ID de pedido
-async buscarPedidoPorTicket(ticketIdRecibido, airtableService) {
-    const ticketLimpio = ticketIdRecibido.trim().toUpperCase();
+async buscarPedidoPorTicket(textoUsuario, airtableService) {
+    // 1. Limpieza total: Quitamos "#REF-", espacios y símbolos. Solo nos quedamos con los números.
+    const soloNumeros = textoUsuario.replace(/#REF-/gi, "").trim();
     
-    // Buscamos en la tabla de pedidos
-    const registros = await airtableService.base(airtableService.t.pedidos).select({
-        filterByFormula: `{ID_Pedido_Unico} = '${ticketLimpio}'`,
-        maxRecords: 1
-    }).firstPage();
+    if (!soloNumeros) return null;
 
-    if (!registros || registros.length === 0) return null;
+    // 2. Reconstruimos el formato original para buscar la coincidencia EXACTA en Airtable
+    const ticketBusqueda = `#REF-${soloNumeros}`;
 
-    const p = registros[0];
-    return {
-        id: p.id,
-        detalle: p.fields.Pedido_Detalle || "Encargo",
-        estado: p.fields.Estado || "Pendiente",
-        entrega: p.fields.Fecha_Entrega || "A determinar"
-    };
+    try {
+        // Buscamos en Airtable usando un filtro de igualdad exacta (=), no de contención
+        const formula = `{ID_Pedido_Unico} = '${ticketBusqueda}'`;
+        const registros = await airtableService.base(airtableService.t.pedidos).select({
+            filterByFormula: formula,
+            maxRecords: 1
+        }).all();
+
+        if (registros.length > 0) {
+            const p = registros[0].fields;
+            return {
+                id: registros[0].id,
+                nombre: p.Nombre_Cliente,
+                detalle: p.Pedido_Detalle,
+                estado: p.Estado,
+                entrega: p.Fecha_Entrega,
+                telefono: p.Telefono
+            };
+        }
+        return null;
+    } catch (e) {
+        console.error("💥 Error en buscarPedidoPorTicket:", e.message);
+        return null;
+    }
 }
 
 // Formatea el mensaje de estado de un pedido para la clienta
@@ -81,14 +96,17 @@ formatearMensajePedido(pedido, indice) {
 
 // Generador de WhatsApp 
      
-async formatearLinkWA(telefono, nombre, mensajeBase) {
+async formatearLinkWA(telefono, nombre, mensajeBase, ticketId = "") {
     if (!telefono) return null;
-    // Limpiamos el número de cualquier cosa que no sea un dígito
     let telLimpio = String(telefono).replace(/[^0-9]/g, ''); 
-    // Si tiene 9 dígitos (España), le ponemos el prefijo 34
     if (telLimpio.length === 9) telLimpio = '34' + telLimpio; 
     
-    const textoWA = encodeURIComponent(mensajeBase.replace('{nombre}', nombre || 'cliente'));
+    // ✨ MEJORA: Reemplazamos tanto el nombre como la referencia si existen en la plantilla
+    let textoFinal = mensajeBase
+        .replace('{nombre}', nombre || 'cliente')
+        .replace('{ticket}', ticketId || ''); // Inyectamos el #REF aquí
+        
+    const textoWA = encodeURIComponent(textoFinal);
     return `https://wa.me/${telLimpio}?text=${textoWA}`;
 }
 
