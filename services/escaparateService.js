@@ -50,20 +50,19 @@ class EscaparateService {
 
 // Procesa la búsqueda de pedidos filtrando por número ID de pedido
 
+a// services/escaparateService.js
+
 async buscarPedidoPorTicket(textoUsuario, airtableService) {
-    // 1. Limpiamos cualquier rastro del prefijo y espacios para quedarnos solo con el número
+    // 1. Limpieza: Quitamos el prefijo y espacios. Nos quedamos solo con los números.
     const soloNumeros = textoUsuario.toUpperCase().replace(/#REF-/g, "").trim();
-    
-    // Si después de limpiar no queda nada (ej: puso solo "#REF-"), salimos
     if (!soloNumeros) return null;
 
-    // 2. Reconstruimos el formato oficial que tenemos en Airtable
+    // 2. Reconstruimos el ID exacto que hay en tu columna de Airtable
     const ticketExacto = `#REF-${soloNumeros}`;
 
     try {
-        // 3. BÚSQUEDA EXACTA: Usamos el operador '=' para que no haya errores con números parecidos
+        // 3. Búsqueda exacta: Usamos el operador '=' en la fórmula de Airtable
         const formula = `{ID_Pedido_Unico} = '${ticketExacto}'`;
-        
         const registros = await airtableService.base(airtableService.t.pedidos).select({
             filterByFormula: formula,
             maxRecords: 1
@@ -79,9 +78,9 @@ async buscarPedidoPorTicket(textoUsuario, airtableService) {
                 nombre: p.Nombre_Cliente
             };
         }
-        return null; // No hubo coincidencia exacta
+        return null;
     } catch (e) {
-        console.error("💥 Error en búsqueda exacta de ticket:", e.message);
+        console.error("💥 Error en buscarPedidoPorTicket:", e.message);
         return null;
     }
 }

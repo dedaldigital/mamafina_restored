@@ -862,8 +862,6 @@ module.exports = async function handler(req, res) {
                     }
 
                     // 🫧 LIMPIO 3. FLUJO DE PEDIDOS (Borradores paso a paso)
-
-                    // Ponemos esto lo primero para que el bot priorice terminar lo que ha empezado
                     const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
 
                     if (borradorPedido && borradorPedido.id) {
@@ -875,14 +873,13 @@ module.exports = async function handler(req, res) {
                         );
 
                         if (result.isFinal) {
-                            // ✨ ARREGLO WHATSAPP: Forzamos que el ticket aparezca en el texto
+                            // ✨ AQUÍ SE DEFINE LA REFERENCIA PARA WHATSAPP
                             const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código de seguimiento es: ${result.ticketId}. Puedes usarlo aquí para ver el estado. 🧵`;
                             
                             const linkWA = await escaparateService.formatearLinkWA(
                                 result.clienteTelefono, 
                                 result.clienteNombre, 
-                                mensajeWA,
-                                result.ticketId // <--- Pasamos el ID por si acaso
+                                mensajeWA
                             );
 
                             await enviarMensajeConBotones(chatId, result.text, [
@@ -893,26 +890,6 @@ module.exports = async function handler(req, res) {
                         }
                         return res.status(200).json({ ok: true });
                     }
-
-                    //Bloque de finalización de pedido
-                    if (result.isFinal) {
-                        // 1. Construimos el mensaje con la variable ticketId que viene del servicio
-                        const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código de seguimiento es: ${result.ticketId}. Puedes usarlo aquí para ver cómo va tu encargo. 🧵`;
-                        
-                        // 2. Pasamos el mensaje ya montado al formateador
-                        const linkWA = await escaparateService.formatearLinkWA(
-                            result.clienteTelefono, 
-                            result.clienteNombre, 
-                            mensajeWA
-                        );
-                    
-                        await enviarMensajeConBotones(chatId, result.text, [
-                            [{ text: "📲 Enviar Ticket por WhatsApp", url: linkWA }]
-                        ]);
-
-                        return res.status(200).json({ ok: true });
-                    }
-
                     // 🫧 LIMPIO 4. FLUJOS BASADOS EN METADATOS (Caja 1, 2 y 3)
                     const metadata = extraerMetadata(replyText);
 
@@ -1320,31 +1297,37 @@ module.exports = async function handler(req, res) {
                     }
                 }
             
-                // 1. PRIORIDAD: Interceptor de Teléfono (Búsqueda de Pedidos)
-                const esRespuesta = !!message.reply_to_message;
-                const esRespuestaAlTelefono = esRespuesta && 
-                    (message.reply_to_message.text.includes("escribe tu número de Teléfono") || 
-                     message.reply_to_message.text.includes("Teléfono"));
-            
-                if (esRespuestaAlTelefono) {
-                    const numLimpio = textoRecibido.replace(/\s+/g, ''); 
-                    await enviarMensajeSimple(chatId, "🔍 Buscando tus encargos por separado...");
-                    const pedidos = await airtableService.buscarPedidoPublico(numLimpio);
-            
-                    if (pedidos && pedidos.length > 0) {
-                        for (const [index, p] of pedidos.entries()) {
-                            const mensajeIndividual = `🧵 **Encargo #${index + 1}**\n📦 **Detalle:** ${p.detalle}\n📌 **Estado:** ${p.estado}\n📅 **Entrega:** ${p.entrega}`;
-                            const botonesIndividuales = [[{ text: "🙋 ¡Me interesa este!", callback_data: `INT_PEDIDO_${p.id}` }]];
-                            await enviarMensajeConBotones(chatId, mensajeIndividual, botonesIndividuales);
-                        }
-                        await enviarMensajeSimple(chatId, "✨ Pulsa el botón del pedido que quieras consultar o actualizar.");
-                    } else {
-                        await enviarMensajeSimple(chatId, "😔 No encuentro ningún pedido con ese número, primor.");
-                    }
-                    await enviarMensajeConBotones(chatId, "✨ ¿Quieres consultar algo más?", [[{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]]);
-                    return res.status(200).json({ ok: true }); 
+                // 🫧 LIMPIO: NUEVO INTERCEPTOR DE TICKET (#REF) PARA CLIENTES
+                const esRespuestaAlTicket = esRespuesta && 
+                (message.reply_to_message.text.includes("Número de Pedido") || 
+                message.reply_to_message.text.includes("#REF"));
+
+                if (esRespuestaAlTicket) {
+                await enviarMensajeSimple(chatId, "🔍 Validando código de seguridad...");
+
+                // 1. Llamamos al servicio para buscar por el código único
+                // Este servicio ya debe tener la lógica de limpiar el prefijo y buscar coincidencia exacta
+                const pedido = await escaparateService.buscarPedidoPorTicket(textoRecibido, airtableService);
+
+                if (pedido) {
+                    // 2. Formateamos el mensaje del pedido encontrado
+                    // Usamos los campos que devuelve Airtable: Pedido_Detalle, Estado, Fecha_Entrega
+                    const txt = `🧵 **Encargo Encontrado**\n📦 **Detalle:** ${pedido.detalle}\n📌 **Estado:** ${pedido.estado}\n📅 **Entrega:** ${pedido.entrega}`;
+                    
+                    await enviarMensajeConBotones(chatId, txt, [
+                        [{ text: "🙋 ¡Tengo una duda sobre este!", callback_data: `INT_PEDIDO_${pedido.id}` }]
+                    ]);
+                } else {
+                    // Mensaje de error si no hay coincidencia exacta
+                    await enviarMensajeSimple(chatId, "😔 No encuentro ningún pedido con ese código exacto. Revisa que esté bien escrito (ej: 7634 o #REF-7634).");
                 }
-            
+
+                await enviarMensajeConBotones(chatId, "¿Ayudo en algo más?", [
+                    [{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]
+                ]);
+                return res.status(200).json({ ok: true }); 
+                }
+                            
                 // NUEVO: Interceptor de IA para el ARCHIVADOR VISUAL
                 const palabrasClave = ['foto', 'ver', 'enseña', 'muestra', 'ejemplo', 'trabajo', 'hecho'];
                 const pareceBusqueda = palabrasClave.some(p => textoMinus.includes(p));
