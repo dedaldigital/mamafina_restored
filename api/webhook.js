@@ -424,11 +424,26 @@ module.exports = async function handler(req, res) {
             }
 
             // CONSULTAR ESTADO DE PEDIDO 
-            else if (data === "CLI_ESTADO") {
-                await enviarMensajeConReply(chatId, "🔎 Por favor, escribe tu número de **Teléfono** para buscar tu pedido:");
-                return res.status(200).json({ ok: true });
-            }
+            const esRespuestaAlTicket = esRespuesta && message.reply_to_message.text.includes("Número de Pedido");
 
+            if (esRespuestaAlTicket) {
+                await enviarMensajeSimple(chatId, "🔍 Validando código de seguridad...");
+                
+                const pedido = await escaparateService.buscarPedidoPorTicket(textoRecibido, airtableService);
+
+                if (pedido) {
+                    const mensajeIndividual = escaparateService.formatearMensajePedido(pedido, 0);
+                    const botonesIndividuales = [[{ text: "🙋 ¡Tengo una duda sobre este!", callback_data: `INT_PEDIDO_${pedido.id}` }]];
+                    await enviarMensajeConBotones(chatId, mensajeIndividual, botonesIndividuales);
+                } else {
+                    await enviarMensajeSimple(chatId, "😔 No encuentro ningún pedido con ese código. Revisa que esté bien escrito (incluyendo el #REF-).");
+                }
+                
+                const botonesMenu = escaparateService.obtenerBotonesMenuPrincipal();
+                await enviarMensajeConBotones(chatId, "¿Ayudo en algo más?", [[{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]]);
+                return res.status(200).json({ ok: true }); 
+            }
+            
             // CATÁLOGO DE TELAS 
             else if (data === "CLI_TELAS") {
                 await responderBoton(callback_query.id);

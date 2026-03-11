@@ -46,6 +46,40 @@ class EscaparateService {
                `• **Miércoles y Sábados:** 10:00h - 14:00h\n` +
                `• **Domingos:** Cerrado 🧵`;
     }
+
+    // services/escaparateService.js (Añade estos métodos)
+
+// Procesa la búsqueda de pedidos filtrando por número ID de pedido
+async buscarPedidoPorTicket(ticketIdRecibido, airtableService) {
+    const ticketLimpio = ticketIdRecibido.trim().toUpperCase();
+    
+    // Buscamos en la tabla de pedidos
+    const registros = await airtableService.base(airtableService.t.pedidos).select({
+        filterByFormula: `{ID_Pedido_Unico} = '${ticketLimpio}'`,
+        maxRecords: 1
+    }).firstPage();
+
+    if (!registros || registros.length === 0) return null;
+
+    const p = registros[0];
+    return {
+        id: p.id,
+        detalle: p.fields.Pedido_Detalle || "Encargo",
+        estado: p.fields.Estado || "Pendiente",
+        entrega: p.fields.Fecha_Entrega || "A determinar"
+    };
+}
+
+//Formatea el mensaje de estado de un pedido para la clienta
+
+ 
+formatearMensajePedido(pedido, indice) {
+    return `🧵 **Encargo #${indice + 1}**\n` +
+           `📦 **Detalle:** ${pedido.detalle}\n` +
+           `📌 **Estado:** ${pedido.estado}\n` +
+           `📅 **Entrega:** ${pedido.entrega}`;
+}
 }
 
 module.exports = new EscaparateService();
+

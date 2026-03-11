@@ -12,7 +12,7 @@ class OrderService {
     async handleOrderWorkflow(chatId, step, text, borradorId) {
         const updates = {};
         let nextMsg = "";
-
+    
         if (step.includes("producto o arreglo")) {
             updates.Pedido_Detalle = text;
             nextMsg = "📝 Anotado. ¿Cuál es el **Nombre del Cliente**?";
@@ -23,12 +23,17 @@ class OrderService {
             updates.Telefono = text;
             nextMsg = "📅 ¿Para qué **Fecha de entrega** es?";
         } else if (step.includes("fecha de entrega")) {
+            // ✨ LA MAGIA: Generamos el código único de seguridad
+            const ticketId = `#REF-${Date.now().toString().slice(-4)}`;
+            
             updates.Fecha_Entrega = text;
             updates.Estado = "📥 Pendiente";
-            updates.ID_Sesion = ""; // Cerramos borrador 
-            nextMsg = "✅ *PEDIDO COMPLETADO*";
+            updates.ID_Pedido_Unico = ticketId; // Asegúrate de tener este campo en Airtable
+            updates.ID_Sesion = ""; 
+            
+            nextMsg = `✅ *PEDIDO COMPLETADO*\n\n🎫 El número de seguimiento es: **${ticketId}**\n\nPor favor, dáselo al cliente. Lo necesitará para consultar su estado.`;
         }
-
+    
         await airtableService.actualizarPedido(borradorId, updates);
         return nextMsg;
     }
