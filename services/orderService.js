@@ -71,27 +71,27 @@ class OrderService {
         try {
             const consultas = await airtableService.obtenerConsultasPendientes();
             if (!consultas || consultas.length === 0) {
-                return { text: "✅ No hay consultas pendientes. ¡Estamos al día, jefa!", blocks: [] };
+                return { text: "✅ No hay consultas pendientes.", blocks: [] };
             }
-
+    
             const blocks = consultas.map(c => {
-                // Generamos el link de WhatsApp con un mensaje predefinido 
-                const linkWA = `https://wa.me/${String(c.tel).replace(/[^0-9]/g, '')}?text=¡Hola ${c.nombre}! Soy Reyes, te escribo por la consulta que nos dejaste... ✨`;
+                // Importante: Usamos encodeURIComponent para que el link no se rompa
+                const textoWA = encodeURIComponent(`¡Hola ${c.nombre}! Soy Reyes, te escribo por la consulta que nos dejaste... ✨`);
+                const linkWA = `https://wa.me/${String(c.tel).replace(/[^0-9]/g, '')}?text=${textoWA}`;
                 
                 return {
                     text: `📝 **CONSULTA DE:** ${c.nombre}\n💬 "${c.duda}"\n📞 Tel: ${c.tel}`,
-                    buttons: [[{ text: "📲 Responder por WhatsApp", url: linkWA }]]
-                    [{ text: "✅ Marcar como Atendida", callback_data: `CERRAR_CONSULTA|${c.id}` }] // Nuevo botón
+                    buttons: [
+                        [{ text: "📲 WhatsApp Directo", url: linkWA }],
+                        [{ text: "✅ Marcar como Atendida", callback_data: `CERRAR_CONSULTA|${c.id}` }] // Usamos | como separador
+                    ]
                 };
             });
-
             return { text: "🙋‍♀️ **CONSULTAS PENDIENTES:**", blocks };
-        } catch (e) {
-            console.error("💥 Error en getPendingConsultations:", e.message);
-            return { text: "⚠️ Error al consultar la tabla de consultas." };
+        } catch (e) { 
+            return { text: "⚠️ Error en consultas.", blocks: [] }; 
         }
     }
-
     // services/orderService.js
 
     // 6. LISTAR INTERESADOS: Clientes que han preguntado por sus pedidos hoy

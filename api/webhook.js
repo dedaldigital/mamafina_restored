@@ -327,51 +327,36 @@ module.exports = async function handler(req, res) {
 
             // BOTONES GESTION DE CONSULTAS 
 
+            // Botón: Ver Consultas
             if (data === "ADM_VER_CONSULTAS") {
                 await responderBoton(callback_query.id);
-                const consultas = await airtableService.obtenerConsultasPendientes();
-            
-                if (!consultas || consultas.length === 0) {
-                    await enviarMensajeSimple(chatId, "✅ No hay consultas pendientes. ¡Estamos al día!");
-                } else {
-                    for (const c of consultas) {
-                        const mensaje = `📝 **CONSULTA DE:** ${c.nombre}\n` +
-                                      `💬 "${c.duda}"\n` +
-                                      `📞 Tel: ${c.tel}\n` +
-                                      `⏰ ${c.fecha}`;
-                        
-                        const linkWA = await formatearLinkWA(c.tel, c.nombre, `¡Hola ${c.nombre}! Soy Reyes, te escribo por la consulta que nos dejaste... ✨`);
-            
-                        const botones = [
-                            [{ text: "📲 WhatsApp Directo", url: linkWA }],
-                            [{ text: "✅ Marcar como Atendida", callback_data: `CERRAR_CONSULTA_${c.id}` }]
-                        ];
-                        await enviarMensajeConBotones(chatId, mensaje, botones);
-                    }
+                const consultData = await orderService.getPendingConsultations();
+                await enviarMensajeSimple(chatId, consultData.text);
+                for (const block of (consultData.blocks || [])) {
+                    await enviarMensajeConBotones(chatId, block.text, block.buttons);
                 }
                 return res.status(200).json({ ok: true });
             }
 
+            // Botón: Ver Interesados
             if (data === "ADM_VER_INTERESADOS") {
                 await responderBoton(callback_query.id);
-                const interesados = await airtableService.obtenerPedidosConInteres();
-            
-                if (!interesados || interesados.length === 0) {
-                    await enviarMensajeSimple(chatId, "☕️ Nadie ha preguntado por pedidos hoy.");
-                } else {
-                    for (const p of interesados) {
-                        const mensaje = `📦 **PEDIDO:** ${p.detalle}\n` +
-                                      `👤 **CLIENTE:** ${p.nombre}\n` +
-                                      `📍 **ESTADO:** ${p.estado}`;
-                        
-                        const linkWA = await formatearLinkWA(p.tel, p.nombre, `¡Hola! Soy Reyes, he visto que has preguntado por tu pedido de "${p.detalle}"...`);
-            
-                        await enviarMensajeConBotones(chatId, mensaje, [[{ text: "📲 Contactar", url: linkWA }]]);
-                    }
+                const interestedData = await orderService.getInterestedClients();
+                await enviarMensajeSimple(chatId, interestedData.text);
+                for (const block of (interestedData.blocks || [])) {
+                    await enviarMensajeConBotones(chatId, block.text, block.buttons);
                 }
                 return res.status(200).json({ ok: true });
             }
-            
+
+            // El ejecutor para cerrar la consulta
+            if (data.startsWith("CERRAR_CONSULTA|")) {
+                await responderBoton(callback_query.id);
+                const idConsulta = data.split('|')[1];
+                const mensajeResultado = await orderService.closeConsultation(idConsulta);
+                await editarMensaje(chatId, messageId, mensajeResultado);
+                return res.status(200).json({ ok: true });
+            }
             //BOTONES CLIENTES
 
             // CLIENTE: HABLAR / INTERESADO
@@ -1185,7 +1170,7 @@ module.exports = async function handler(req, res) {
                     }
                     return res.status(200).json({ ok: true });
                 }
-                
+
                 // Si es un Admin y escribe algo que no reconoce, la IA responde (cajón de sastre)
                if (!esRespuesta && !textoMinus.startsWith("/")) {
                 const respuestaIA = await openaiService.generarRespuesta(textoRecibido);
