@@ -374,7 +374,7 @@ module.exports = async function handler(req, res) {
 
             // CLIENTE: HABLAR / INTERESADO
             else if (data === "CLI_INTERESADO") {
-                const abierta = estaLaTiendaAbierta();
+                const abierta = escaparateService.estaLaTiendaAbierta();
                 if (abierta) {
                     const linkWA = await formatearLinkWA("636796210", "Reyes y Begoña", "¡Hola! No he podido contactar por llamada...");
                     await enviarMensajeConBotones(chatId, "¡Estamos en el taller! 🧵\n\nPuedes pasarte, hablarnos por WhatsApp o llamarnos directamente pulsando aquí:\n👉 +34636796210", [                        //[{ text: "¡Estamos en el taller! 🧵 Si quieres llámanos ahora 📞", url: linkLlamada }],
@@ -391,8 +391,8 @@ module.exports = async function handler(req, res) {
 
             // VOLVER AL INICIO
             else if (data === "CLI_INICIO") {
-                const abierta = estaLaTiendaAbierta();
-                const botones = obtenerBotonesMenuPrincipal();
+                // CAMBIO AQUÍ: Añadir el prefijo escaparateService.
+                const botones = escaparateService.obtenerBotonesMenuPrincipal(); 
                 await enviarMensajeConBotones(chatId, "¡Dime, primor! ¿En qué más te ayudo? 🧵", botones);
                 return res.status(200).json({ ok: true });
             }
@@ -530,7 +530,7 @@ module.exports = async function handler(req, res) {
 
             else if (data.startsWith("INT_PEDIDO_")) {
                 const idPedido = data.replace("INT_PEDIDO_", "");
-                const abierta = estaLaTiendaAbierta();
+                const abierta = escaparateService.estaLaTiendaAbierta();
                 const pedidoData = await airtableService.obtenerPedidoPorId(idPedido);
             
                 if (abierta) {
@@ -1215,7 +1215,7 @@ module.exports = async function handler(req, res) {
                     // PASO 3: RECIBIMOS TELÉFONO -> GUARDADO FINAL
                     else if (metadata.step === "ESP_TELEFONO") {
                         metadata.telefonoCliente = textoRecibido;
-                        const abierta = estaLaTiendaAbierta();
+                        const abierta = escaparateService.estaLaTiendaAbierta();
                         metadata.estado = abierta ? "WhatsApp Abierto" : "Pendiente";
 
                         await enviarMensajeSimple(chatId, "⏳ Guardando todo en el libro de hilos...");
@@ -1296,13 +1296,13 @@ module.exports = async function handler(req, res) {
                 // SALUDO PRINCIPAL
                 
                 else if (textoMinus === "/start" || textoMinus === "hola") {
-                    const botones = obtenerBotonesMenuPrincipal();
-                    const bienvenida = "¡Hola, primor! Soy Mamassistant, la ayudante de Mamafina. 🧵 ¿En qué puedo ayudarte hoy?";
+
+                    const botones = escaparateService.obtenerBotonesMenuPrincipal(); 
+                    const bienvenida = "¡Hola, primor! Soy Mamassistant...";
                     
                     await enviarMensajeConBotones(chatId, bienvenida, botones);
                     return res.status(200).json({ ok: true }); 
                 }
-            
                 // 3. ÚLTIMA OPCIÓN: IA
                 else {
                     const respuestaIA = await openaiService.generarRespuesta(textoRecibido);

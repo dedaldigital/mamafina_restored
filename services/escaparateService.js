@@ -1,7 +1,5 @@
 // GESTIÓN DE HORARIO
 
-// services/escaparateService.js
-
 class EscaparateService {
     //Determina si la tienda física está abierta según el horario oficial
 
