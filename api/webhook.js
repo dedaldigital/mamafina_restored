@@ -870,12 +870,11 @@ module.exports = async function handler(req, res) {
                         return res.status(200).json({ ok: true });
                     }
 
-                    
                     // 🫧 LIMPIO 4. FLUJOS BASADOS EN METADATOS (Caja 1, 2 y 3)
                     const metadata = extraerMetadata(replyText);
 
                     if (metadata && metadata.step) {
-                        const paso = metadata.step; // DECLARACIÓN ÚNICA PARA TODO EL BLOQUE
+                        const paso = metadata.step; // DECLARACIÓN ÚNICA
 
                         // --- A. INVENTARIO IA (CAJA 1: MOSTRADOR) ---
                         if (paso.startsWith("ESPERANDO_")) {
@@ -960,7 +959,7 @@ module.exports = async function handler(req, res) {
                                 return res.status(200).json({ ok: true });
                             }
                         }
-
+                        
                         /// --- D. TRABAJOS (ADMIN - MOSTRADOR) ---
                         if (paso === "ESP_NOMBRE_TRABAJO") {
                             metadata.nombre = textoRecibido;
@@ -985,9 +984,6 @@ module.exports = async function handler(req, res) {
                             await enviarMensajeConBotones(chatId, taskData.text, taskData.buttons);
                             return res.status(200).json({ ok: true });
                         }
-
-                    }
-                    
                     
 
                     // VISUALIZAR
