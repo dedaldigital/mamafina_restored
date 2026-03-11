@@ -855,38 +855,29 @@ module.exports = async function handler(req, res) {
                     }
 
                     
-                    //  🫧 LIMPIO 4. FLUJOS BASADOS EN METADATOS (IA Vision y Academia) 🫧 LIMPIO
+                    // 🫧 LIMPIO 4. FLUJOS BASADOS EN METADATOS (Caja 1, 2 y 3)
                     const metadata = extraerMetadata(replyText);
+
                     if (metadata && metadata.step) {
-                        const paso = metadata.step;
+                        const paso = metadata.step; // DECLARACIÓN ÚNICA PARA TODO EL BLOQUE
 
+                        // --- A. INVENTARIO IA (CAJA 1: MOSTRADOR) ---
+                        if (paso.startsWith("ESPERANDO_")) {
+                            const result = await inventoryService.handleInventoryIAWorkflow(chatId, metadata, textoRecibido);
+                            if (result.type === 'reply') {
+                                await enviarMensajeConReply(chatId, result.text);
+                            } else {
+                                await enviarMensajeSimple(chatId, result.text);
+                            }
+                            return res.status(200).json({ ok: true });
+                        }
 
-                        //  🫧 LIMPIO A. INVENTARIO IA (ESPERANDO_NOMBRE, etc.) 🫧 LIMPIO
-                        // 🫧 LIMPIO 4. FLUJOS BASADOS EN METADATOS (IA Vision, Academia y Escaparate)
-const metadata = extraerMetadata(replyText);
-if (metadata && metadata.step) {
-    const paso = metadata.step;
-
-    // --- A. INVENTARIO IA (MOSTRADOR) ---
-    if (paso.startsWith("ESPERANDO_")) {
-        const result = await inventoryService.handleInventoryIAWorkflow(chatId, metadata, textoRecibido);
-        if (result.type === 'reply') {
-            await enviarMensajeConReply(chatId, result.text);
-        } else {
-            await enviarMensajeSimple(chatId, result.text);
-        }
-        return res.status(200).json({ ok: true });
-    }
-
-                        // --- B. ESCAPARATE (NUEVO: CONSULTAS CLIENTES) ---
-                        // Filtramos solo por los pasos de la consulta para no chocar con "Trabajos"
+                        // --- B. ESCAPARATE (CAJA 2: CONSULTAS CLIENTES) ---
                         if (["ESP_CONSULTA", "ESP_NOMBRE", "ESP_TELEFONO"].includes(paso)) {
                             const result = await escaparateService.handleConsultationWorkflow(textoRecibido, metadata);
-
                             if (result.isFinal) {
                                 await enviarMensajeSimple(chatId, "⏳ Guardando todo en el libro de hilos...");
                                 await airtableService.guardarConsultaFinal(result.meta);
-
                                 const abierta = escaparateService.estaLaTiendaAbierta();
                                 if (abierta) {
                                     const mensajeWA = `¡Hola! Soy ${result.meta.nombreCliente}. Os escribo por la consulta: "${result.meta.mensajeConsulta}"`;
@@ -901,12 +892,10 @@ if (metadata && metadata.step) {
                             } else {
                                 await enviarMensajeConReply(chatId, `${result.text}\n\n(DATOS_IA: ${JSON.stringify(result.meta)})`);
                             }
-                          
-                        }
                             return res.status(200).json({ ok: true });
                         }
-                        // --- FLUJO B: ACADEMIA (ALUMNAS) ---
-                        // Si el paso empieza por "ACAD_", mantenemos la lógica aquí hasta que creemos su propio servicio
+
+                        // --- C. ACADEMIA (CAJA 3: ALUMNAS) ---
                         if (paso.startsWith("ACAD_")) {
                                 try {
                                     const nombreHumano = textoRecibido.trim();
@@ -955,7 +944,8 @@ if (metadata && metadata.step) {
                                 return res.status(200).json({ ok: true });
                             }
                         }
-                        // --- TUS PASOS EXISTENTES DE INVENTARIO Y TRABAJOS ---
+                        
+                        /// --- D. TRABAJOS (ADMIN - MOSTRADOR) ---
                         if (paso === "ESP_NOMBRE_TRABAJO") {
                             metadata.nombre = textoRecibido;
                             metadata.step = "ESP_CATEGORIA_TRABAJO";
