@@ -27,7 +27,7 @@ class OrderService {
             updates.Telefono = text;
             result.text = "📅 ¿Para qué **Fecha de entrega** es?";
         } else if (step.includes("fecha de entrega")) {
-            // ✨ Generamos el código único de seguridad #REF [cite: 66, 70]
+       
             const ticketId = `#REF-${Date.now().toString().slice(-4)}`;
             
             updates.Fecha_Entrega = text;
