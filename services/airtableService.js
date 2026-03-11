@@ -367,17 +367,19 @@ class AirtableService {
 
         // Obtener datos de la tabla 'Consultas'
         async obtenerConsultasPendientes() {
-            try {
-                const records = await this.base(this.t.consultas).select({
-                    filterByFormula: "{Estado} != 'Cerrada'",
-                    sort: [{ field: "Created", direction: "desc" }]
-                }).all();
-                return records.map(r => ({
-                    nombre: r.fields["Nombre/ID"] || "Sin nombre",
-                    duda: r.fields.Consulta || "Sin duda",
-                    tel: r.fields.Telefono || ""
-                }));
-            } catch (e) { return []; }
+            // 1. Pedimos los registros a Airtable
+            const registros = await this.base('Consultas').select({
+                filterByFormula: "{Estado} != 'Cerrada'"
+            }).all();
+        
+            // 2. Aquí es donde "atrapamos" el ID invisible (record.id)
+            return registros.map(record => ({
+                id: record.id,      // <--- ESTA ES LA CLAVE. No es una columna, es una propiedad del objeto record.
+                nombre: record.fields.Nombre,
+                duda: record.fields.Duda,
+                tel: record.fields.Telefono,
+                fecha: record.fields.Fecha
+            }));
         }
 
         // Obtener datos de la tabla 'Pedidos_y_Clientes'
