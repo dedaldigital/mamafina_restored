@@ -862,7 +862,37 @@ module.exports = async function handler(req, res) {
                     }
 
                     // 🫧 LIMPIO 3. FLUJO DE PEDIDOS (Borradores paso a paso)
+
+                    // Ponemos esto lo primero para que el bot priorice terminar lo que ha empezado
                     const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
+
+                    if (borradorPedido && borradorPedido.id) {
+                        const result = await orderService.handleOrderWorkflow(
+                            chatId, 
+                            replyText.toLowerCase(), 
+                            textoRecibido, 
+                            borradorPedido.id
+                        );
+
+                        if (result.isFinal) {
+                            // ✨ ARREGLO WHATSAPP: Forzamos que el ticket aparezca en el texto
+                            const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código de seguimiento es: ${result.ticketId}. Puedes usarlo aquí para ver el estado. 🧵`;
+                            
+                            const linkWA = await escaparateService.formatearLinkWA(
+                                result.clienteTelefono, 
+                                result.clienteNombre, 
+                                mensajeWA,
+                                result.ticketId // <--- Pasamos el ID por si acaso
+                            );
+
+                            await enviarMensajeConBotones(chatId, result.text, [
+                                [{ text: "📲 Enviar Ticket por WhatsApp", url: linkWA }]
+                            ]);
+                        } else {
+                            await enviarMensajeConReply(chatId, result.text);
+                        }
+                        return res.status(200).json({ ok: true });
+                    }
 
                     //Bloque de finalización de pedido
                     if (result.isFinal) {

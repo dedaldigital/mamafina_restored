@@ -49,18 +49,21 @@ class EscaparateService {
 
 
 // Procesa la búsqueda de pedidos filtrando por número ID de pedido
+
 async buscarPedidoPorTicket(textoUsuario, airtableService) {
-    // 1. Limpieza total: Quitamos "#REF-", espacios y símbolos. Solo nos quedamos con los números.
-    const soloNumeros = textoUsuario.replace(/#REF-/gi, "").trim();
+    // 1. Limpiamos cualquier rastro del prefijo y espacios para quedarnos solo con el número
+    const soloNumeros = textoUsuario.toUpperCase().replace(/#REF-/g, "").trim();
     
+    // Si después de limpiar no queda nada (ej: puso solo "#REF-"), salimos
     if (!soloNumeros) return null;
 
-    // 2. Reconstruimos el formato original para buscar la coincidencia EXACTA en Airtable
-    const ticketBusqueda = `#REF-${soloNumeros}`;
+    // 2. Reconstruimos el formato oficial que tenemos en Airtable
+    const ticketExacto = `#REF-${soloNumeros}`;
 
     try {
-        // Buscamos en Airtable usando un filtro de igualdad exacta (=), no de contención
-        const formula = `{ID_Pedido_Unico} = '${ticketBusqueda}'`;
+        // 3. BÚSQUEDA EXACTA: Usamos el operador '=' para que no haya errores con números parecidos
+        const formula = `{ID_Pedido_Unico} = '${ticketExacto}'`;
+        
         const registros = await airtableService.base(airtableService.t.pedidos).select({
             filterByFormula: formula,
             maxRecords: 1
@@ -70,23 +73,21 @@ async buscarPedidoPorTicket(textoUsuario, airtableService) {
             const p = registros[0].fields;
             return {
                 id: registros[0].id,
-                nombre: p.Nombre_Cliente,
                 detalle: p.Pedido_Detalle,
                 estado: p.Estado,
                 entrega: p.Fecha_Entrega,
-                telefono: p.Telefono
+                nombre: p.Nombre_Cliente
             };
         }
-        return null;
+        return null; // No hubo coincidencia exacta
     } catch (e) {
-        console.error("💥 Error en buscarPedidoPorTicket:", e.message);
+        console.error("💥 Error en búsqueda exacta de ticket:", e.message);
         return null;
     }
 }
 
 // Formatea el mensaje de estado de un pedido para la clienta
 
- 
 formatearMensajePedido(pedido, indice) {
     return `🧵 **Encargo #${indice + 1}**\n` +
            `📦 **Detalle:** ${pedido.detalle}\n` +
