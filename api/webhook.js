@@ -350,19 +350,20 @@ module.exports = async function handler(req, res) {
             }
 
             // El ejecutor para cerrar la consulta
-            // webhook.js
-            else if (data.startsWith("CERRAR_CONSULTA|")) {
+            else if (data.includes("CERRAR_CONSULTA")) { // Cambiamos startsWith por includes para ser más flexibles
                 await responderBoton(callback_query.id);
                 
-                // El ID es lo que hay después del |
-                const idConsulta = data.split('|')[1]; 
+                // Limpiamos el ID: Quitamos el prefijo y el separador sea cual sea
+                const idConsulta = data.replace("CERRAR_CONSULTA|", "").replace("CERRAR_CONSULTA_", ""); 
                 
-                // Llamamos al servicio
+                console.log("🔍 Intentando cerrar consulta con ID:", idConsulta); // Esto saldrá en tus logs de Vercel
+
                 const mensajeResultado = await orderService.closeConsultation(idConsulta);
-                
                 await editarMensaje(chatId, messageId, mensajeResultado);
                 return res.status(200).json({ ok: true });
             }
+
+            
             //BOTONES CLIENTES
 
             // CLIENTE: HABLAR / INTERESADO

@@ -122,20 +122,25 @@ class OrderService {
     }
 
     // 7. CERRAR CONSULTA: Cambia el estado en Airtable para que no aparezca más como pendiente
+ 
+   // services/orderService.js
+
     async closeConsultation(idConsulta) {
         try {
-            // Usamos el servicio de Airtable para actualizar la columna "Estado" a "Cerrada"
-            // Nota: Asegúrate de que en tu Airtable el valor del desplegable sea exactamente "Cerrada"
-            await airtableService.base(airtableService.t.consultas).update(idConsulta, {
-                "Estado": "Cerrada"
+            // Limpiamos el ID por si acaso
+            const idLimpio = idConsulta.trim();
+
+            await airtableService.base('Consultas').update(idLimpio, {
+                // Asegúrate de que este texto sea IDÉNTICO al de tu opción en Airtable
+                "Estado": "Cerrada" 
             });
-            return "✅ **Consulta marcada como atendida.** ¡Un hilo menos en el costurero!";
+
+            return "✅ **Consulta atendida.** ¡Un hilo menos en el costurero!";
         } catch (e) {
-            console.error("💥 Error en closeConsultation:", e.message);
-            return "⚠️ No pude cerrar la consulta en la base de datos, primor.";
+            // Este log te dirá en Vercel si el fallo es por la opción de la lista
+            console.error(`💥 Error Airtable: ${e.message}`);
+            return "⚠️ No pude cerrar la consulta. Revisa que la opción 'Cerrada' exista en Airtable.";
         }
     }
-    
 }
-
 module.exports = new OrderService();
