@@ -6,6 +6,7 @@ const geminiService = require('../services/geminiService');
 const fetch = require('node-fetch');
 
 const taskService = require('../services/taskService');
+const inventoryService = require('../services/inventoryService');
 
 // 🎒 LA MOCHILA (Fuera del handler)
 let cacheFotos = {};
@@ -268,20 +269,15 @@ module.exports = async function handler(req, res) {
 
             //Iniciar venta
             if (data.startsWith("INICIAR_VENTA|")) {
-                const [, id, nombre, tabla] = data.split('|'); // Ahora recibimos 4 datos
-                await enviarMensajeConReply(chatId, `✍️ ¿Cuántas unidades vendidas de: *${nombre}*?\n\n(Responde solo el número. ID:${id}|TABLA:${tabla})`);
+                const salePrompt = await inventoryService.prepareSale(data);
+                await enviarMensajeConReply(chatId, salePrompt.text);
                 return res.status(200).json({ ok: true });
             }
 
             //Guardado final tras elegir Categoría
             else if (data.startsWith("CAT|")) {
-                const [, nombre, cant, unidad, categoria] = data.split('|'); // Desempaquetamos los 4 datos
-                
-            
-                await airtableService.crearArticuloNuevo(nombre, cant, unidad, categoria, user);
-                
-                // Editamos el mensaje para confirmar que se ha guardado 
-                await editarMensaje(chatId, messageId, `✅ **¡Producto Creado!**\n📦 *${nombre}*\n🔢 Cantidad: ${cant} ${unidad}\n🗂️ Categoría: ${categoria}`);
+                const result = await inventoryService.confirmProductCreation(data, user);
+                await editarMensaje(chatId, messageId, result.text);
                 return res.status(200).json({ ok: true });
             }
 
@@ -1109,7 +1105,6 @@ module.exports = async function handler(req, res) {
                                 return res.status(200).json({ ok: true });
                         }
                     }
-                        // RESPUESTAS DE TAREA
 
                         // RESPUESTAS DE TAREA
                         else if (replyText.includes("Escribe la descripción de la tarea")) {
@@ -1118,31 +1113,12 @@ module.exports = async function handler(req, res) {
                             return res.status(200).json({ ok: true });
                         }
 
-                        // ✨ NUEVO: RESPUESTAS DE VENTA (Aquí estaba el agujero)
+                        // RESPUESTAS DE VENTA
                         else if (replyText.includes("¿Cuántas unidades vendidas de:")) {
-                            // Extraemos los datos ocultos en el mensaje (ID y TABLA)
-                            const matchId = replyText.match(/ID:([^|]+)/);
-                            const matchTabla = replyText.match(/TABLA:([^)]+)/);
-                            
-                            const idAirtable = matchId ? matchId[1].trim() : null;
-                            const tablaKey = matchTabla ? matchTabla[1].trim() : 'inventario';
-                            const unidades = parseInt(textoRecibido);
-
-                            if (!unidades || unidades <= 0) {
-                                await enviarMensajeSimple(chatId, "⚠️ Por favor, introduce un número válido mayor que 0.");
-                                return res.status(200).json({ ok: true });
-                            }
-
-                            try {
-                                await enviarMensajeSimple(chatId, "⏳ Actualizando stock...");
-                                // Descontamos las unidades en Airtable
-                                const resultado = await airtableService.actualizarStock(idAirtable, -unidades, user, tablaKey); 
-                                await enviarMensajeSimple(chatId, `✅ **Venta registrada con éxito**\n📦 ${resultado.nombre}\n📉 Stock actual: **${resultado.stock}** unidades.`);
-                            } catch (e) {
-                                console.error("💥 Error registrando venta:", e.message);
-                                await enviarMensajeSimple(chatId, "❌ Hubo un error al descontar el stock en Airtable.");
-                            }
-                            return res.status(200).json({ ok: true }); 
+                            await enviarMensajeSimple(chatId, "⏳ Actualizando stock...");
+                            const saleResult = await inventoryService.executeSale(replyText, textoRecibido, user);
+                            await enviarMensajeSimple(chatId, saleResult.text);
+                            return res.status(200).json({ ok: true });
                         }
 
                     }//CIERRE ESRESPUESTAS
@@ -1222,44 +1198,19 @@ module.exports = async function handler(req, res) {
                     const busq = textoMinus.replace(/stock|inventario|de/gi, "").trim();
                     
                     if (!busq) {
-                        
                         await enviarMensajeConReply(chatId, "🔍 ¿Qué artículo buscas en el inventario?");
-                        return res.status(200).json({ ok: true });
-                    }
-
-                    try {
-                        const resultados = await airtableService.buscarEnTodoElInventario(busq);
+                    } else {
+                        const searchData = await inventoryService.searchStock(busq);
                         
-                        if (!resultados || resultados.length === 0) {
-                            await enviarMensajeSimple(chatId, `❌ No he encontrado "${busq}" en el inventario.`);
-                        } else {
-
-                            for (const r of resultados) {
-
-                                // Definimos variables para devolver el mensaje
-                                const nombre = r.fields?.Articulo || "Sin nombre";
-                                const stock = r.fields?.Stock ?? 0;
-                                const tipoEmoji = r.tipo || "📦";
-                                const referencia = r.fields?.Referencia ? `\n🆔 Ref: \`${r.fields.Referencia}\`` : "";
-                                const txt = `${tipoEmoji}\n📦 *${nombre}*${referencia}\n🔹 Cantidad: **${stock}**`;
-                                const tablaKey = r.tipo.includes('Tela') ? 'telas' : 
-                                                r.tipo.includes('Producto') ? 'productos' : 'inventario';
-
-                                // Registrar venta
-                                await enviarMensajeConBotones(chatId, txt, [[{ 
-                                    text: "🛒 Registrar Venta", 
-                                    callback_data: `INICIAR_VENTA|${r.id}|${nombre}|${tablaKey}` 
-                                }]]);
-                            }
+                        // Enviamos el encabezado ("🔍 Resultados para...")
+                        await enviarMensajeSimple(chatId, searchData.text);
+                        
+                        // Enviamos cada ficha de producto con su botón
+                        for (const block of searchData.blocks) {
+                            await enviarMensajeConBotones(chatId, block.text, block.buttons);
                         }
-                    } catch (error) {
-
-                        console.error("💥 Error en comando stock:", error.message);
-                        await enviarMensajeSimple(chatId, "⚠️ Error al consultar el inventario.");
                     }
-
                     return res.status(200).json({ ok: true });
-
                 }
 
                 // COMANDO AÑADIR ARTÍCULO MANUALMENTE

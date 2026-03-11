@@ -36,6 +36,61 @@ class InventoryService {
             return { text: "⚠️ Error al consultar el inventario.", blocks: [] };
         }
     }
+
+    // 2. Prepara el flujo de venta (Pide la cantidad)
+    async prepareSale(data) {
+        const [, id, nombre, tabla] = data.split('|');
+        return {
+            text: `✍️ ¿Cuántas unidades vendidas de: *${nombre}*?\n\n(Responde solo el número. ID:${id}|TABLA:${tabla})`,
+            forceReply: true
+        };
+    }
+
+    // 3. Ejecuta la venta en Airtable (Descuento de stock)
+    async executeSale(replyText, unitsText, user) {
+        const matchId = replyText.match(/ID:([^|]+)/);
+        const matchTabla = replyText.match(/TABLA:([^)]+)/);
+        
+        const idAirtable = matchId ? matchId[1].trim() : null;
+        const tablaKey = matchTabla ? matchTabla[1].trim() : 'inventario';
+        const unidades = parseInt(unitsText);
+
+        if (!unidades || unidades <= 0) {
+            return { success: false, text: "⚠️ Por favor, introduce un número válido mayor que 0." };
+        }
+
+        try {
+            // Llamada al servicio de Airtable para restar el stock [cite: 43]
+            const resultado = await airtableService.actualizarStock(idAirtable, -unidades, user, tablaKey); 
+            return { 
+                success: true, 
+                text: `✅ **Venta registrada con éxito**\n📦 ${resultado.nombre}\n📉 Stock actual: **${resultado.stock}** unidades.` 
+            };
+        } catch (e) {
+            console.error("💥 Error en InventoryService.executeSale:", e.message);
+            return { success: false, text: "❌ Hubo un error al descontar el stock en Airtable." };
+        }
+    }
+
+    // 4. Guardado final de un artículo nuevo tras elegir categoría
+    async confirmProductCreation(data, user) {
+        try {
+            const [, nombre, cant, unidad, categoria] = data.split('|');
+            
+            await airtableService.crearArticuloNuevo(nombre, cant, unidad, categoria, user);
+            
+            return {
+                success: true,
+                text: `✅ **¡Producto Creado!**\n📦 *${nombre}*\n🔢 Cantidad: ${cant} ${unidad}\n🗂️ Categoría: ${categoria}`
+            };
+        } catch (error) {
+            console.error("💥 Error en InventoryService.confirmProductCreation:", error.message);
+            return {
+                success: false,
+                text: "⚠️ No pude guardar el producto en Airtable. Revisa los logs."
+            };
+        }
+    }
 }
 
 module.exports = new InventoryService();
