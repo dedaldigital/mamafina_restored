@@ -838,8 +838,10 @@ module.exports = async function handler(req, res) {
                     }
 
                     // 2. GESTIÓN DE PEDIDOS 🫧 LIMPIO
+
                     // No usa metadatos, detecta las preguntas del flujo de borrador
                     const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
+
                     if (borradorPedido && borradorPedido.id) {
                         // Delegamos el flujo de preguntas (Detalle, Nombre, Teléfono, Fecha) al servicio
                         const nextPrompt = await orderService.handleOrderWorkflow(chatId, replyText.toLowerCase(), textoRecibido, borradorPedido.id);
@@ -851,11 +853,23 @@ module.exports = async function handler(req, res) {
                         }
                         return res.status(200).json({ ok: true });
                     }
+                
                     
                     // 3. FLUJOS BASADOS EN METADATOS (IA Vision y Academia) 🫧 LIMPIO
                     const metadata = extraerMetadata(replyText);
                     if (metadata && metadata.step) {
                         const paso = metadata.step;
+
+                        // 3.1. RESPUESTA A BÚSQUEDA DE STOCK (Este bloque está bien)
+                        if (rTextLower.includes("artículo buscas en el inventario")) {
+                            const busqueda = textoRecibido.trim();
+                            const searchData = await inventoryService.searchStock(busqueda);
+                            await enviarMensajeSimple(chatId, searchData.text);
+                            for (const block of searchData.blocks) {
+                                await enviarMensajeConBotones(chatId, block.text, block.buttons);
+                            }
+                            return res.status(200).json({ ok: true });
+                        }
 
                         // A. INVENTARIO IA (ESPERANDO_NOMBRE, etc.) 🫧 LIMPIO
                         if (paso.startsWith("ESPERANDO_")) {
@@ -963,7 +977,7 @@ module.exports = async function handler(req, res) {
                         }
                         return res.status(200).json({ ok: true });
                     }
-                
+                s
    
                 }//CIERRE ESRESPUESTAS
                    
@@ -1037,7 +1051,7 @@ module.exports = async function handler(req, res) {
                 // COMANDOS DE INVENTARIO
 
 
-                // COMANDO STOCK / INVENTARIO 
+                // COMANDO STOCK / INVENTARIO  🫧 LIMPIO
                 if (textoMinus.includes("stock") || textoMinus.includes("inventario")) {
                     const busq = textoMinus.replace(/stock|inventario|de/gi, "").trim();
                     
