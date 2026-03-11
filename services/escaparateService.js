@@ -91,6 +91,33 @@ async formatearLinkWA(telefono, nombre, mensajeBase) {
     const textoWA = encodeURIComponent(mensajeBase.replace('{nombre}', nombre || 'cliente'));
     return `https://wa.me/${telLimpio}?text=${textoWA}`;
 }
+
+//Gestiona el flujo de la consulta (Duda -> Nombre -> Teléfono)
+   
+     
+async handleConsultationWorkflow(textoRecibido, metadata) {
+    let result = { text: "", step: "", isFinal: false, meta: metadata };
+
+    if (metadata.step === "ESP_CONSULTA") {
+        result.meta.mensajeConsulta = textoRecibido;
+        result.meta.step = "ESP_NOMBRE";
+        result.text = `📝 Anotado. ¿A nombre de quién pongo la consulta, primor?`;
+    } 
+    else if (metadata.step === "ESP_NOMBRE") {
+        result.meta.nombreCliente = textoRecibido;
+        result.meta.step = "ESP_TELEFONO";
+        result.text = `🏷️ Muy bien, **${textoRecibido}**. \n¿A qué número de **Teléfono** podemos contactarte?`;
+    } 
+    else if (metadata.step === "ESP_TELEFONO") {
+        result.meta.telefonoCliente = textoRecibido;
+        const abierta = this.estaLaTiendaAbierta();
+        result.meta.estado = abierta ? "WhatsApp Abierto" : "Pendiente";
+        result.isFinal = true;
+        result.text = "✅ ¡Anotado! Mañana Reyes o Begoña te responderán.";
+    }
+
+    return result;
+}
 }
 
 

@@ -854,39 +854,6 @@ module.exports = async function handler(req, res) {
                         return res.status(200).json({ ok: true });
                     }
 
-                    // 🫧 LIMPIO 3. FLUJO DE PEDIDOS (Borradores paso a paso)
-                    const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
-
-                    if (borradorPedido && borradorPedido.id) {
-                        // 1. Recibimos el objeto (text, isFinal, ticketId, etc.)
-                        const result = await orderService.handleOrderWorkflow(
-                            chatId, 
-                            replyText.toLowerCase(), 
-                            textoRecibido, 
-                            borradorPedido.id
-                        );
-
-                        // 2. Si es el paso final, generamos el botón de WhatsApp
-                        if (result.isFinal) {
-                            const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código de seguimiento es: ${result.ticketId}. 🧵`;
-                            
-                            const linkWA = await escaparateService.formatearLinkWA(
-                                result.clienteTelefono, 
-                                result.clienteNombre, 
-                                mensajeWA
-                            );
-
-                            await enviarMensajeConBotones(chatId, result.text, [
-                                [{ text: "📲 Enviar Ticket por WhatsApp", url: linkWA }]
-                            ]);
-                        } 
-                        // 3. Si no es el final, enviamos la siguiente pregunta (Nombre, Teléfono, etc.)
-                        else {
-                            await enviarMensajeConReply(chatId, result.text);
-                        }
-
-                        return res.status(200).json({ ok: true });
-                    }                           
                     
                     //  🫧 LIMPIO 4. FLUJOS BASADOS EN METADATOS (IA Vision y Academia) 🫧 LIMPIO
                     const metadata = extraerMetadata(replyText);
@@ -895,13 +862,47 @@ module.exports = async function handler(req, res) {
 
 
                         //  🫧 LIMPIO A. INVENTARIO IA (ESPERANDO_NOMBRE, etc.) 🫧 LIMPIO
-                        if (paso.startsWith("ESPERANDO_")) {
-                            const result = await inventoryService.handleInventoryIAWorkflow(chatId, metadata, textoRecibido);
-                            if (result.type === 'reply') {
-                                await enviarMensajeConReply(chatId, result.text);
+                        // 🫧 LIMPIO 4. FLUJOS BASADOS EN METADATOS (IA Vision, Academia y Escaparate)
+const metadata = extraerMetadata(replyText);
+if (metadata && metadata.step) {
+    const paso = metadata.step;
+
+    // --- A. INVENTARIO IA (MOSTRADOR) ---
+    if (paso.startsWith("ESPERANDO_")) {
+        const result = await inventoryService.handleInventoryIAWorkflow(chatId, metadata, textoRecibido);
+        if (result.type === 'reply') {
+            await enviarMensajeConReply(chatId, result.text);
+        } else {
+            await enviarMensajeSimple(chatId, result.text);
+        }
+        return res.status(200).json({ ok: true });
+    }
+
+                        // --- B. ESCAPARATE (NUEVO: CONSULTAS CLIENTES) ---
+                        // Filtramos solo por los pasos de la consulta para no chocar con "Trabajos"
+                        if (["ESP_CONSULTA", "ESP_NOMBRE", "ESP_TELEFONO"].includes(paso)) {
+                            const result = await escaparateService.handleConsultationWorkflow(textoRecibido, metadata);
+
+                            if (result.isFinal) {
+                                await enviarMensajeSimple(chatId, "⏳ Guardando todo en el libro de hilos...");
+                                await airtableService.guardarConsultaFinal(result.meta);
+
+                                const abierta = escaparateService.estaLaTiendaAbierta();
+                                if (abierta) {
+                                    const mensajeWA = `¡Hola! Soy ${result.meta.nombreCliente}. Os escribo por la consulta: "${result.meta.mensajeConsulta}"`;
+                                    const linkWA = await escaparateService.formatearLinkWA("636796210", result.meta.nombreCliente, mensajeWA);
+                                    await enviarMensajeConBotones(chatId, `✅ ¡Hecho! Ya podéis hablar por aquí:`, [
+                                        [{ text: "📲 WhatsApp Directo", url: linkWA }],
+                                        [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
+                                    ]);
+                                } else {
+                                    await enviarMensajeConBotones(chatId, result.text, [[{ text: "🏠 Menú", callback_data: "CLI_INICIO" }]]);
+                                }
                             } else {
-                                await enviarMensajeSimple(chatId, result.text);
+                                await enviarMensajeConReply(chatId, `${result.text}\n\n(DATOS_IA: ${JSON.stringify(result.meta)})`);
                             }
+                          
+                        }
                             return res.status(200).json({ ok: true });
                         }
                         // --- FLUJO B: ACADEMIA (ALUMNAS) ---
