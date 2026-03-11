@@ -350,20 +350,26 @@ module.exports = async function handler(req, res) {
             }
 
             // El ejecutor para cerrar la consulta
-            else if (data.includes("CERRAR_CONSULTA")) { // Cambiamos startsWith por includes para ser más flexibles
+          
+            else if (data.includes("CERRAR_CONSULTA")) {
                 await responderBoton(callback_query.id);
                 
-                // Limpiamos el ID: Quitamos el prefijo y el separador sea cual sea
-                const idConsulta = data.replace("CERRAR_CONSULTA|", "").replace("CERRAR_CONSULTA_", ""); 
-                
-                console.log("🔍 Intentando cerrar consulta con ID:", idConsulta); // Esto saldrá en tus logs de Vercel
+                // ✂️ Cortamos por el separador | y nos quedamos con la segunda parte
+                const partes = data.split('|');
+                const idConsulta = partes[1] ? partes[1].trim() : null;
+
+                if (!idConsulta) {
+                    console.error("❌ No se pudo extraer el ID de:", data);
+                    return res.status(200).json({ ok: true });
+                }
+
+                console.log("🔍 ID enviado a Airtable:", idConsulta); // Mira esto en los logs de Vercel
 
                 const mensajeResultado = await orderService.closeConsultation(idConsulta);
                 await editarMensaje(chatId, messageId, mensajeResultado);
                 return res.status(200).json({ ok: true });
             }
 
-            
             //BOTONES CLIENTES
 
             // CLIENTE: HABLAR / INTERESADO

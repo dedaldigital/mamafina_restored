@@ -125,21 +125,17 @@ class OrderService {
  
    // services/orderService.js
 
-    async closeConsultation(idConsulta) {
+   async closeConsultation(idConsulta) {
         try {
-            // Limpiamos el ID por si acaso
-            const idLimpio = idConsulta.trim();
-
-            await airtableService.base('Consultas').update(idLimpio, {
-                // Asegúrate de que este texto sea IDÉNTICO al de tu opción en Airtable
-                "Estado": "Cerrada" 
+            // Forzamos el nombre de la tabla como texto para evitar fallos de variables
+            await airtableService.base('Consultas').update(idConsulta, {
+                "Estado": "Cerrada"
             });
-
-            return "✅ **Consulta atendida.** ¡Un hilo menos en el costurero!";
+            return "✅ **Consulta atendida.** ¡Un hilo menos!";
         } catch (e) {
-            // Este log te dirá en Vercel si el fallo es por la opción de la lista
-            console.error(`💥 Error Airtable: ${e.message}`);
-            return "⚠️ No pude cerrar la consulta. Revisa que la opción 'Cerrada' exista en Airtable.";
+            // ESTO ES LO MÁS IMPORTANTE: Mira este log en Vercel
+            console.error(`💥 ERROR AIRTABLE DETALLADO: ${e.message} | ID: [${idConsulta}]`);
+            return `⚠️ Error: ${e.message}. Revisa los logs.`;
         }
     }
 }
