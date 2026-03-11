@@ -854,6 +854,22 @@ module.exports = async function handler(req, res) {
                         return res.status(200).json({ ok: true });
                     }
 
+                    // 🫧 LIMPIO 3. FLUJO DE PEDIDOS (Borradores paso a paso)
+                    const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
+
+                    if (borradorPedido && borradorPedido.id) {
+                        const result = await orderService.handleOrderWorkflow(chatId, replyText.toLowerCase(), textoRecibido, borradorPedido.id);
+
+                        if (result.isFinal) {
+                            const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código es: ${result.ticketId}. 🧵`;
+                            const linkWA = await escaparateService.formatearLinkWA(result.clienteTelefono, result.clienteNombre, mensajeWA);
+                            await enviarMensajeConBotones(chatId, result.text, [[{ text: "📲 Enviar Ticket por WhatsApp", url: linkWA }]]);
+                        } else {
+                            await enviarMensajeConReply(chatId, result.text);
+                        }
+                        return res.status(200).json({ ok: true });
+                    }
+
                     
                     // 🫧 LIMPIO 4. FLUJOS BASADOS EN METADATOS (Caja 1, 2 y 3)
                     const metadata = extraerMetadata(replyText);
@@ -944,7 +960,7 @@ module.exports = async function handler(req, res) {
                                 return res.status(200).json({ ok: true });
                             }
                         }
-                        
+
                         /// --- D. TRABAJOS (ADMIN - MOSTRADOR) ---
                         if (paso === "ESP_NOMBRE_TRABAJO") {
                             metadata.nombre = textoRecibido;
@@ -969,6 +985,9 @@ module.exports = async function handler(req, res) {
                             await enviarMensajeConBotones(chatId, taskData.text, taskData.buttons);
                             return res.status(200).json({ ok: true });
                         }
+
+                    }
+                    
                     
 
                     // VISUALIZAR
