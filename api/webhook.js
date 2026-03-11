@@ -2,12 +2,13 @@
 const airtableService = require('../services/airtableService');
 const openaiService = require('../services/openaiService');
 const imgbbService = require('../services/imgbbService'); 
-const geminiService = require('../services/geminiService');
 const fetch = require('node-fetch');
 
 const taskService = require('../services/taskService');
 const inventoryService = require('../services/inventoryService');
-const orderService = require('../services/orderService'); // <--- AÑADE ESTA LÍNEA
+const orderService = require('../services/orderService');
+const escaparateService = require('../services/escaparateService');
+
 
 // 🎒 LA MOCHILA (Fuera del handler)
 let cacheFotos = {};
@@ -396,37 +397,28 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
+            // HORARIO
             if (data === "CLI_HORARIO") {
                 await responderBoton(callback_query.id);
-                
-                const abierta = estaLaTiendaAbierta();
+                const abierta = escaparateService.estaLaTiendaAbierta();
                 let mensajeEstado, botonesHorario;
             
                 if (abierta) {
-                    mensajeEstado = "¡Estamos en el taller! 🧵\n\nPuedes pasarte, hablarnos por WhatsApp o llamarnos directamente pulsando aquí:\n👉 +34636796210";
-                    
-                    // Generamos el link de WhatsApp genérico
-                    const linkWA = await formatearLinkWA("636796210", "Reyes y Begoña", "¡Hola! He visto que estáis abiertas y tengo una duda... 🧵");
-                    
+                    mensajeEstado = "¡Estamos en el taller! 🧵\n\nPuedes pasarte, hablarnos por WhatsApp...";
+                    const linkWA = await formatearLinkWA("636796210", "Reyes y Begoña", "¡Hola! He visto que estáis abiertas...");
                     botonesHorario = [
-                    
                         [{ text: "📲 Hablar por WhatsApp ahora", url: linkWA }],
                         [{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]
                     ];
                 } else {
-                    mensajeEstado = "😴 **Ahora mismo el taller está cerrado.** Estamos descansando para coser con más ganas mañana.";
+                    mensajeEstado = "😴 **Ahora mismo el taller está cerrado.**";
                     botonesHorario = [
                         [{ text: "🙋 Dejar una consulta ahora", callback_data: "CLI_INTERESADO" }],
                         [{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]
                     ];
                 }
             
-                const mensajeCompleto = `${mensajeEstado}\n\n` +
-                    `📍 **Nuestro horario es:**\n` +
-                    `• **Lun, Mar, Jue y Vie:** 10:00h - 14:00h y 17:00h - 20:00h\n` +
-                    `• **Miércoles y Sábados:** 10:00h - 14:00h\n` +
-                    `• **Domingos:** Cerrado 🧵`;
-            
+                const mensajeCompleto = `${mensajeEstado}\n\n${escaparateService.obtenerTextoHorario()}`;
                 await enviarMensajeConBotones(chatId, mensajeCompleto, botonesHorario);
                 return res.status(200).json({ ok: true });
             }
@@ -1406,42 +1398,5 @@ module.exports = async function handler(req, res) {
         }
     }
 
-    function estaLaTiendaAbierta() {
-        // 1. Obtenemos la hora actual en España
-        const ahora = new Date().toLocaleString("en-US", {timeZone: "Europe/Madrid"});
-        const fechaEsp = new Date(ahora);
-        
-        const dia = fechaEsp.getDay(); // 0: Dom, 1: Lun, 2: Mar, 3: Mie, 4: Jue, 5: Vie, 6: Sab
-        const hora = fechaEsp.getHours();
-        const minutos = fechaEsp.getMinutes();
-        const tiempoDecimal = hora + (minutos / 60); // Ejemplo: 10:30 -> 10.5
-    
-        // Tramos Horarios
-        const manana = tiempoDecimal >= 10 && tiempoDecimal < 14;
-        const tarde = tiempoDecimal >= 17 && tiempoDecimal < 20;
-    
-        // 2. LÓGICA DE APERTURA (Tu horario exacto)
-        // Lunes(1), Martes(2), Jueves(4), Viernes(5)
-        if ([1, 2, 4, 5].includes(dia)) {
-            return manana || tarde;
-        }
-        // Miércoles(3) y Sábados(6)
-        if ([3, 6].includes(dia)) {
-            return manana;
-        }
-        // Domingos(0)
-        return false;
-    }
-
-    function obtenerBotonesMenuPrincipal() {
-        const abierta = estaLaTiendaAbierta();
-        return [
-            [{ text: "🎓 Clases de Costura", callback_data: "CLI_ACADEMIA" }], // Nuevo acceso
-            [{ text: abierta ? "📲 Hablar con nosotras (Abierto)" : "🙋 Dejar consulta", callback_data: "CLI_INTERESADO" }],
-            [{ text: "📦 Mi pedido", callback_data: "CLI_ESTADO" }],
-            [{ text: "🧵 Catálogo", callback_data: "CLI_TELAS" }],
-            [{ text: "⏰ Horario", callback_data: "CLI_HORARIO" }]
-        ];
-    }
 
  };//CERRAMOS HANDLER
