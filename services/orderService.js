@@ -81,6 +81,7 @@ class OrderService {
                 return {
                     text: `📝 **CONSULTA DE:** ${c.nombre}\n💬 "${c.duda}"\n📞 Tel: ${c.tel}`,
                     buttons: [[{ text: "📲 Responder por WhatsApp", url: linkWA }]]
+                    [{ text: "✅ Marcar como Atendida", callback_data: `CERRAR_CONSULTA|${c.id}` }] // Nuevo botón
                 };
             });
 
@@ -117,6 +118,21 @@ class OrderService {
         } catch (e) {
             console.error("💥 Error en getInterestedClients:", e.message);
             return { text: "⚠️ Error al consultar la lista de interesados." };
+        }
+    }
+
+    // 7. CERRAR CONSULTA: Cambia el estado en Airtable para que no aparezca más como pendiente
+    async closeConsultation(idConsulta) {
+        try {
+            // Usamos el servicio de Airtable para actualizar la columna "Estado" a "Cerrada"
+            // Nota: Asegúrate de que en tu Airtable el valor del desplegable sea exactamente "Cerrada"
+            await airtableService.base(airtableService.t.consultas).update(idConsulta, {
+                "Estado": "Cerrada"
+            });
+            return "✅ **Consulta marcada como atendida.** ¡Un hilo menos en el costurero!";
+        } catch (e) {
+            console.error("💥 Error en closeConsultation:", e.message);
+            return "⚠️ No pude cerrar la consulta en la base de datos, primor.";
         }
     }
     

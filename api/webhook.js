@@ -1158,7 +1158,7 @@ module.exports = async function handler(req, res) {
 
                 // COMANDOS PARA GESTIONAR LA CLIENTELA
 
-                // Ver consultas de clientes 
+                // LIMPIO 🫧 Ver consultas de clientes  🫧 LIMPIO
                 if (textoMinus === "/consultas" || textoMinus === "consultas") {
                     const consultData = await orderService.getPendingConsultations();
                     await enviarMensajeSimple(chatId, consultData.text);
@@ -1171,19 +1171,22 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true });
                 }
 
-                // Comando: /interesados (Ver quién ha preguntado por su pedido)
-                if (textoMinus === "/interesados") {
-                    const interesados = await airtableService.obtenerPedidosConInteres();
-                    if (interesados.length === 0) await enviarMensajeSimple(chatId, "☕️ Nadie ha preguntado por pedidos hoy.");
-                    else {
-                        for (const p of interesados) {
-                            const linkWA = await formatearLinkWA(p.tel, p.nombre, `Hola ${p.nombre}, he visto que has preguntado por tu pedido de "${p.detalle}"...`);
-                            await enviarMensajeConBotones(chatId, `👤 **${p.nombre}**\n🧵 Pedido: ${p.detalle}`, [[{ text: "📲 Avisar por WhatsApp", url: linkWA }]]);
+                /// 🫧 LIMPIO Comando: /interesados (Ver quién ha preguntado por su pedido) 🫧 LIMPIO
+                if (textoMinus === "/interesados" || textoMinus === "interesados") {
+                    // Delegamos la búsqueda y generación de botones al servicio de pedidos
+                    const interestedData = await orderService.getInterestedClients();
+                    
+                    await enviarMensajeSimple(chatId, interestedData.text);
+                    
+                    if (interestedData.blocks) {
+                        for (const block of interestedData.blocks) {
+                            await enviarMensajeConBotones(chatId, block.text, block.buttons);
                         }
                     }
                     return res.status(200).json({ ok: true });
                 }
-               // Si es un Admin y escribe algo que no reconoce, la IA responde (cajón de sastre)
+                
+                // Si es un Admin y escribe algo que no reconoce, la IA responde (cajón de sastre)
                if (!esRespuesta && !textoMinus.startsWith("/")) {
                 const respuestaIA = await openaiService.generarRespuesta(textoRecibido);
                 await enviarMensajeSimple(chatId, respuestaIA);
