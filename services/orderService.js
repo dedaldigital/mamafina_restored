@@ -75,6 +75,9 @@ class OrderService {
             }
     
             const blocks = consultas.map(c => {
+
+                // Si por lo que sea Airtable no trae el ID, usamos una alerta
+                const idSeguro = c.id || "SIN_ID";
                 // Importante: Usamos encodeURIComponent para que el link no se rompa
                 const textoWA = encodeURIComponent(`¡Hola ${c.nombre}! Soy Reyes, te escribo por la consulta que nos dejaste... ✨`);
                 const linkWA = `https://wa.me/${String(c.tel).replace(/[^0-9]/g, '')}?text=${textoWA}`;
@@ -83,7 +86,7 @@ class OrderService {
                     text: `📝 **CONSULTA DE:** ${c.nombre}\n💬 "${c.duda}"\n📞 Tel: ${c.tel}`,
                     buttons: [
                         [{ text: "📲 WhatsApp Directo", url: linkWA }],
-                        [{ text: "✅ Marcar como Atendida", callback_data: `CERRAR_CONSULTA|${c.id}` }] // Usamos | como separador
+                        [{ text: "✅ Marcar como Atendida", callback_data: `CERRAR_CONSULTA|${idSeguro}` }]
                     ]
                 };
             });
