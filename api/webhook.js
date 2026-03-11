@@ -309,23 +309,23 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
     
-            // BOTONES TAREAS 🫧 LIMPIO
+            // 🫧 LIMPIO BOTONES TAREAS 🫧 LIMPIO
 
-            //Botones de prioridad 
+            //🫧 LIMPIO Botones de prioridad 🫧 LIMPIO
             if (data.startsWith("PRIO|")) {
                 const textoConfirmacion = await taskService.confirmTaskCreation(data);
                 await editarMensaje(chatId, messageId, textoConfirmacion);
                 return res.status(200).json({ ok: true });
             }
             
-            //Boton de eliminar
+            // 🫧 LIMPIO Boton de eliminar 🫧 LIMPIO
             else if (data.startsWith("EJECUTAR_BORRADO|") || data.startsWith("ELIMINAR_TAREA|")) {
                 const textoResultado = await taskService.handleTaskAction(data);
                 await editarMensaje(chatId, messageId, textoResultado);
                 return res.status(200).json({ ok: true });
             }
 
-            // BOTONES GESTION DE CONSULTAS
+            // BOTONES GESTION DE CONSULTAS 
 
             if (data === "ADM_VER_CONSULTAS") {
                 await responderBoton(callback_query.id);
@@ -828,7 +828,7 @@ module.exports = async function handler(req, res) {
                     const replyText = message.reply_to_message.text;
                     const rTextLower = replyText.toLowerCase();
 
-                    // 1. GESTIÓN DE VENTAS 🫧 LIMPIO
+                    // 🫧 LIMPIO 1. GESTIÓN DE VENTAS 🫧 LIMPIO
                     // No usa metadatos, lee directamente el texto del prompt de venta
                     if (replyText.includes("¿Cuántas unidades vendidas de:")) {
                         await enviarMensajeSimple(chatId, "⏳ Actualizando stock...");
@@ -837,7 +837,7 @@ module.exports = async function handler(req, res) {
                         return res.status(200).json({ ok: true });
                     }
 
-                    // 2. BÚSQUEDA DE STOCK 🫧 LIMPIO
+                    // 🫧 LIMPIO 2. BÚSQUEDA DE STOCK 🫧 LIMPIO
           
                     if (rTextLower.includes("artículo buscas en el inventario")) {
                         const busqueda = textoRecibido.trim();
@@ -850,7 +850,7 @@ module.exports = async function handler(req, res) {
                         return res.status(200).json({ ok: true });
                     }
 
-                    // 3. FLUJO DE PEDIDOS (Borradores paso a paso) 🫧 LIMPIO
+                    // 🫧 LIMPIO 3. FLUJO DE PEDIDOS (Borradores paso a paso) 🫧 LIMPIO
                     // Gestiona el proceso de anotar Detalle -> Nombre -> Teléfono -> Fecha
                     const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
                     if (borradorPedido && borradorPedido.id) {
@@ -864,13 +864,13 @@ module.exports = async function handler(req, res) {
                     }
                                 
                     
-                    // 4. FLUJOS BASADOS EN METADATOS (IA Vision y Academia) 🫧 LIMPIO
+                    //  🫧 LIMPIO 4. FLUJOS BASADOS EN METADATOS (IA Vision y Academia) 🫧 LIMPIO
                     const metadata = extraerMetadata(replyText);
                     if (metadata && metadata.step) {
                         const paso = metadata.step;
 
 
-                        // A. INVENTARIO IA (ESPERANDO_NOMBRE, etc.) 🫧 LIMPIO
+                        //  🫧 LIMPIO A. INVENTARIO IA (ESPERANDO_NOMBRE, etc.) 🫧 LIMPIO
                         if (paso.startsWith("ESPERANDO_")) {
                             const result = await inventoryService.handleInventoryIAWorkflow(chatId, metadata, textoRecibido);
                             if (result.type === 'reply') {
@@ -948,7 +948,7 @@ module.exports = async function handler(req, res) {
                             return res.status(200).json({ ok: true });
                         }
 
-                         // 5. RESPUESTA A TAREAS (Si el bot pidió la descripción) 🫧 LIMPIO
+                         // 🫧 LIMPIO 5. RESPUESTA A TAREAS (Si el bot pidió la descripción) 🫧 LIMPIO
                         if (replyText.includes("Escribe la descripción de la tarea")) {
                             const taskData = await taskService.handleTaskInput(chatId, textoRecibido);
                             await enviarMensajeConBotones(chatId, taskData.text, taskData.buttons);
@@ -1158,14 +1158,14 @@ module.exports = async function handler(req, res) {
 
                 // COMANDOS PARA GESTIONAR LA CLIENTELA
 
-                // comando /consultas (Ver consultas pendientes)
-                if (textoMinus === "/consultas") {
-                    const consultas = await airtableService.obtenerConsultasPendientes();
-                    if (consultas.length === 0) await enviarMensajeSimple(chatId, "✅ No hay consultas nuevas.");
-                    else {
-                        for (const c of consultas) {
-                            const linkWA = await formatearLinkWA(c.tel, c.nombre, `¡Hola ${c.nombre}! Soy Reyes...`);
-                            await enviarMensajeConBotones(chatId, `👤 **${c.nombre}**\n❓ "${c.duda}"\n📞 ${c.tel}`, [[{ text: "📲 Responder por WhatsApp", url: linkWA }]]);
+                // Ver consultas de clientes 
+                if (textoMinus === "/consultas" || textoMinus === "consultas") {
+                    const consultData = await orderService.getPendingConsultations();
+                    await enviarMensajeSimple(chatId, consultData.text);
+                    
+                    if (consultData.blocks) {
+                        for (const block of consultData.blocks) {
+                            await enviarMensajeConBotones(chatId, block.text, block.buttons);
                         }
                     }
                     return res.status(200).json({ ok: true });

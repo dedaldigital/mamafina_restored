@@ -65,6 +65,60 @@ class OrderService {
             return { text: "⚠️ No pude actualizar el estado en la base de datos." };
         }
     }
+
+    // 5. LISTAR CONSULTAS: Recupera las dudas que los clientes dejaron en el buzón
+    async getPendingConsultations() {
+        try {
+            const consultas = await airtableService.obtenerConsultasPendientes();
+            if (!consultas || consultas.length === 0) {
+                return { text: "✅ No hay consultas pendientes. ¡Estamos al día, jefa!", blocks: [] };
+            }
+
+            const blocks = consultas.map(c => {
+                // Generamos el link de WhatsApp con un mensaje predefinido 
+                const linkWA = `https://wa.me/${String(c.tel).replace(/[^0-9]/g, '')}?text=¡Hola ${c.nombre}! Soy Reyes, te escribo por la consulta que nos dejaste... ✨`;
+                
+                return {
+                    text: `📝 **CONSULTA DE:** ${c.nombre}\n💬 "${c.duda}"\n📞 Tel: ${c.tel}`,
+                    buttons: [[{ text: "📲 Responder por WhatsApp", url: linkWA }]]
+                };
+            });
+
+            return { text: "🙋‍♀️ **CONSULTAS PENDIENTES:**", blocks };
+        } catch (e) {
+            console.error("💥 Error en getPendingConsultations:", e.message);
+            return { text: "⚠️ Error al consultar la tabla de consultas." };
+        }
+    }
+
+    // services/orderService.js
+
+    // 6. LISTAR INTERESADOS: Clientes que han preguntado por sus pedidos hoy
+    async getInterestedClients() {
+        try {
+            // Buscamos en la memoria de Airtable los pedidos con estado "🙋Cliente Interesado"
+            const interesados = await airtableService.obtenerPedidosConInteres();
+            
+            if (!interesados || interesados.length === 0) {
+                return { text: "☕️ Nadie ha preguntado por pedidos hoy, jefa. ¡Tómate un respiro!", blocks: [] };
+            }
+
+            const blocks = interesados.map(p => {
+                // Generamos el link de WhatsApp específico para el pedido del cliente
+                const linkWA = `https://wa.me/${String(p.tel).replace(/[^0-9]/g, '')}?text=Hola ${p.nombre}, soy Reyes. He visto que has preguntado por tu pedido de "${p.detalle}"... ✨`;
+                
+                return {
+                    text: `👤 **CLIENTE:** ${p.nombre}\n🧵 **PEDIDO:** ${p.detalle}\n📍 **ESTADO:** ${p.estado}`,
+                    buttons: [[{ text: "📲 Avisar por WhatsApp", url: linkWA }]]
+                };
+            });
+
+            return { text: "🙋‍♂️ **CLIENTES INTERESADOS:**", blocks };
+        } catch (e) {
+            console.error("💥 Error en getInterestedClients:", e.message);
+            return { text: "⚠️ Error al consultar la lista de interesados." };
+        }
+    }
     
 }
 
