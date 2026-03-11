@@ -837,15 +837,24 @@ module.exports = async function handler(req, res) {
                         return res.status(200).json({ ok: true });
                     }
 
-                    // 2. GESTIÓN DE PEDIDOS 🫧 LIMPIO
+                    // 2. BÚSQUEDA DE STOCK 🫧 LIMPIO
+          
+                    if (rTextLower.includes("artículo buscas en el inventario")) {
+                        const busqueda = textoRecibido.trim();
+                        await enviarMensajeSimple(chatId, `🔍 Buscando "${busqueda}"...`);
+                        const searchData = await inventoryService.searchStock(busqueda);
+                        await enviarMensajeSimple(chatId, searchData.text);
+                        for (const block of searchData.blocks) {
+                            await enviarMensajeConBotones(chatId, block.text, block.buttons);
+                        }
+                        return res.status(200).json({ ok: true });
+                    }
 
-                    // No usa metadatos, detecta las preguntas del flujo de borrador
+                    // 3. FLUJO DE PEDIDOS (Borradores paso a paso) 🫧 LIMPIO
+                    // Gestiona el proceso de anotar Detalle -> Nombre -> Teléfono -> Fecha
                     const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
-
                     if (borradorPedido && borradorPedido.id) {
-                        // Delegamos el flujo de preguntas (Detalle, Nombre, Teléfono, Fecha) al servicio
                         const nextPrompt = await orderService.handleOrderWorkflow(chatId, replyText.toLowerCase(), textoRecibido, borradorPedido.id);
-                        
                         if (nextPrompt.includes("COMPLETADO")) {
                             await enviarMensajeSimple(chatId, nextPrompt);
                         } else {
@@ -853,23 +862,13 @@ module.exports = async function handler(req, res) {
                         }
                         return res.status(200).json({ ok: true });
                     }
-                
+                                
                     
-                    // 3. FLUJOS BASADOS EN METADATOS (IA Vision y Academia) 🫧 LIMPIO
+                    // 4. FLUJOS BASADOS EN METADATOS (IA Vision y Academia) 🫧 LIMPIO
                     const metadata = extraerMetadata(replyText);
                     if (metadata && metadata.step) {
                         const paso = metadata.step;
 
-                        // 3.1. RESPUESTA A BÚSQUEDA DE STOCK (Este bloque está bien)
-                        if (rTextLower.includes("artículo buscas en el inventario")) {
-                            const busqueda = textoRecibido.trim();
-                            const searchData = await inventoryService.searchStock(busqueda);
-                            await enviarMensajeSimple(chatId, searchData.text);
-                            for (const block of searchData.blocks) {
-                                await enviarMensajeConBotones(chatId, block.text, block.buttons);
-                            }
-                            return res.status(200).json({ ok: true });
-                        }
 
                         // A. INVENTARIO IA (ESPERANDO_NOMBRE, etc.) 🫧 LIMPIO
                         if (paso.startsWith("ESPERANDO_")) {
@@ -949,16 +948,15 @@ module.exports = async function handler(req, res) {
                             return res.status(200).json({ ok: true });
                         }
 
-                        // Respuesta a la creación de una tarea (Descripción -> Prioridad)
-                        else if (replyText.includes("Escribe la descripción de la tarea")) {
-                            // Delegamos la lógica de botones y texto al servicio de tareas
+                         // 5. RESPUESTA A TAREAS (Si el bot pidió la descripción) 🫧 LIMPIO
+                        if (replyText.includes("Escribe la descripción de la tarea")) {
                             const taskData = await taskService.handleTaskInput(chatId, textoRecibido);
-                            
                             await enviarMensajeConBotones(chatId, taskData.text, taskData.buttons);
-                            return res.status(200).json({ ok: true }); // Cortamos ejecución con éxito
+                            return res.status(200).json({ ok: true });
                         }
+                    
 
-                          // VISUALIZAR
+                    // VISUALIZAR
 
                     // Elegimos tela
                     if (rTextLower.includes("tela buscamos")) {
@@ -977,7 +975,6 @@ module.exports = async function handler(req, res) {
                         }
                         return res.status(200).json({ ok: true });
                     }
-                s
    
                 }//CIERRE ESRESPUESTAS
                    
