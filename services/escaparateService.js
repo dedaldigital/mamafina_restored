@@ -47,7 +47,6 @@ class EscaparateService {
                `• **Domingos:** Cerrado 🧵`;
     }
 
-    // services/escaparateService.js (Añade estos métodos)
 
 // Procesa la búsqueda de pedidos filtrando por número ID de pedido
 async buscarPedidoPorTicket(ticketIdRecibido, airtableService) {
@@ -70,7 +69,7 @@ async buscarPedidoPorTicket(ticketIdRecibido, airtableService) {
     };
 }
 
-//Formatea el mensaje de estado de un pedido para la clienta
+// Formatea el mensaje de estado de un pedido para la clienta
 
  
 formatearMensajePedido(pedido, indice) {
@@ -79,7 +78,21 @@ formatearMensajePedido(pedido, indice) {
            `📌 **Estado:** ${pedido.estado}\n` +
            `📅 **Entrega:** ${pedido.entrega}`;
 }
+
+// Generador de WhatsApp 
+     
+async formatearLinkWA(telefono, nombre, mensajeBase) {
+    if (!telefono) return null;
+    // Limpiamos el número de cualquier cosa que no sea un dígito
+    let telLimpio = String(telefono).replace(/[^0-9]/g, ''); 
+    // Si tiene 9 dígitos (España), le ponemos el prefijo 34
+    if (telLimpio.length === 9) telLimpio = '34' + telLimpio; 
+    
+    const textoWA = encodeURIComponent(mensajeBase.replace('{nombre}', nombre || 'cliente'));
+    return `https://wa.me/${telLimpio}?text=${textoWA}`;
 }
+}
+
 
 module.exports = new EscaparateService();
 
