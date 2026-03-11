@@ -350,10 +350,16 @@ module.exports = async function handler(req, res) {
             }
 
             // El ejecutor para cerrar la consulta
-            if (data.startsWith("CERRAR_CONSULTA|")) {
+            // webhook.js
+            else if (data.startsWith("CERRAR_CONSULTA|")) {
                 await responderBoton(callback_query.id);
-                const idConsulta = data.split('|')[1];
+                
+                // El ID es lo que hay después del |
+                const idConsulta = data.split('|')[1]; 
+                
+                // Llamamos al servicio
                 const mensajeResultado = await orderService.closeConsultation(idConsulta);
+                
                 await editarMensaje(chatId, messageId, mensajeResultado);
                 return res.status(200).json({ ok: true });
             }
