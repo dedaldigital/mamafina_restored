@@ -105,9 +105,12 @@ class OrderService {
                 const tel = r.tel || ""; // Si no hay teléfono, dejamos vacío para evitar errores
     
                 // Limpiamos el teléfono para el link de WhatsApp de forma segura
-                const telLimpio = tel ? tel.replace(/[^0-9]/g, '') : "";
+                let telLimpio = tel ? String(tel).replace(/[^0-9]/g, '') : "";
+                if (telLimpio.length === 9 && /^[67]/.test(telLimpio)) {
+                    telLimpio = '34' + telLimpio;
+                }
                 const urlWA = telLimpio ? `https://wa.me/${telLimpio}` : null;
-    
+
                 const buttons = [];
                 if (urlWA) {
                     buttons.push([{ text: "📲 Responder WhatsApp", url: urlWA }]);
@@ -130,26 +133,27 @@ class OrderService {
     // 6. LISTAR INTERESADOS: Clientes que han preguntado por sus pedidos hoy
     async getInterestedClients() {
         try {
-            const pedidos = await airtableService.getPedidosInteresados();
+            // ✨ CORRECCIÓN: El nombre real de la función
+            const pedidos = await airtableService.obtenerPedidosConInteres();
             if (!pedidos || pedidos.length === 0) {
                 return { text: "✅ No hay clientes esperando respuesta ahora mismo.", blocks: [] };
             }
     
             const blocks = await Promise.all(pedidos.map(async p => {
-                // ✨ IMPORTANTE: Usamos la lógica de limpieza real
-                const nombreFinal = p.fields.Nombre_Cliente || "Cliente";
-                const mensajeBase = `Hola ${nombreFinal}, soy Reyes. He visto que has preguntado por tu pedido de "${p.fields.Pedido_Detalle}"... ✨`;
+                // ✨ CORRECCIÓN: Aquí "p" ya está mapeado, no tiene ".fields"
+                const nombreFinal = p.nombre || "Cliente";
+                const detalle = p.detalle || "Encargo";
+                const estado = p.estado || "Pendiente";
+                const mensajeBase = `Hola ${nombreFinal}, soy Reyes. He visto que has preguntado por tu pedido de "${detalle}"... ✨`;
                 
-                // 🛠️ Aquí está la clave: llamamos a la función que SÍ sabe tratar los números
-                // Nota: Si formatearLinkWA no está en este archivo, usa la lógica manual corregida:
-                let telLimpio = String(p.fields.Telefono).replace(/[^0-9]/g, '');
+                let telLimpio = String(p.tel).replace(/[^0-9]/g, '');
                 if (telLimpio.length === 9 && /^[67]/.test(telLimpio)) {
                     telLimpio = '34' + telLimpio;
                 }
                 const linkWA = `https://wa.me/${telLimpio}?text=${encodeURIComponent(mensajeBase)}`;
                 
                 return {
-                    text: `👤 **CLIENTE:** ${nombreFinal}\n🧵 **PEDIDO:** ${p.fields.Pedido_Detalle}\n📍 **ESTADO:** ${p.fields.Estado}`,
+                    text: `👤 **CLIENTE:** ${nombreFinal}\n🧵 **PEDIDO:** ${detalle}\n📍 **ESTADO:** ${estado}`,
                     buttons: [[{ text: "📲 Avisar por WhatsApp", url: linkWA }]]
                 };
             }));
