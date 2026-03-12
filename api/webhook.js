@@ -286,8 +286,6 @@ module.exports = async function handler(req, res) {
             // BOTONES PEDIDOS 🫧 LIMPIO
 
             //Menú de estados
-
-
             // A. Mostrar el menú de cambio de estado 
             else if (data.startsWith("ESTADO_MENU|")) {
                 const idPedido = data.split('|')[1];
@@ -310,23 +308,23 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
     
-            // 🫧 LIMPIO BOTONES TAREAS 🫧 LIMPIO
+            //BOTONES TAREAS 🫧 LIMPIO
 
-            //🫧 LIMPIO Botones de prioridad 🫧 LIMPIO
+            //Botones de prioridad 🫧 LIMPIO
             if (data.startsWith("PRIO|")) {
                 const textoConfirmacion = await taskService.confirmTaskCreation(data);
                 await editarMensaje(chatId, messageId, textoConfirmacion);
                 return res.status(200).json({ ok: true });
             }
             
-            // 🫧 LIMPIO Boton de eliminar 🫧 LIMPIO
+            // IMPIO Boton de eliminar 
             else if (data.startsWith("EJECUTAR_BORRADO|") || data.startsWith("ELIMINAR_TAREA|")) {
                 const textoResultado = await taskService.handleTaskAction(data);
                 await editarMensaje(chatId, messageId, textoResultado);
                 return res.status(200).json({ ok: true });
             }
 
-            // BOTONES GESTION DE CONSULTAS 
+            // BOTONES GESTION DE CONSULTAS 🫧 LIMPIO
 
             // Botón: Ver Consultas
             if (data === "ADM_VER_CONSULTAS") {
@@ -350,7 +348,7 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
-            // El ejecutor para cerrar la consulta
+            // El ejecutor para cerrar la consulta 
           
             else if (data.includes("CERRAR_CONSULTA")) {
                 await responderBoton(callback_query.id);
@@ -372,7 +370,7 @@ module.exports = async function handler(req, res) {
 
             //BOTONES CLIENTES
 
-            // CLIENTE: HABLAR / INTERESADO
+            // CLIENTE: HABLAR / INTERESADO 🫧 LIMPIO
             else if (data === "CLI_INTERESADO") {
                 const abierta = escaparateService.estaLaTiendaAbierta();
                 if (abierta) {
@@ -389,14 +387,62 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
-            // BOTÓN: CONSULTAR ESTADO DE PEDIDO (#REF)
+            // BOTÓN: CONSULTAR ESTADO DE PEDIDO (#REF) 🫧 LIMPIO
             else if (data === "CLI_ESTADO") {
                 // Forzamos la respuesta para que el bot "escuche" el siguiente mensaje
                 await enviarMensajeConReply(chatId, "🔎 Por favor, escribe tu **Número de Pedido** (ej: #REF-1234) para buscar tu encargo:");
                 return res.status(200).json({ ok: true });
             }
 
-            // VOLVER AL INICIO
+             // Interés en un pedido específico 🫧 LIMPIO
+            
+             else if (data.startsWith("INT_PEDIDO_")) {
+                const idPedido = data.replace("INT_PEDIDO_", "");
+                const abierta = escaparateService.estaLaTiendaAbierta();
+                
+                // 1. Obtenemos el registro completo de Airtable
+                const pedidoData = await airtableService.obtenerPedidoPorId(idPedido);
+
+                if (!pedidoData || !pedidoData.fields) {
+                    await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles de ese encargo en mi libreta.");
+                    return res.status(200).json({ ok: true });
+                }
+
+                // 2. EXTRAEMOS LOS DATOS CORRECTAMENTE (Desde .fields)
+                const detallePedido = pedidoData.fields.Pedido_Detalle || "mi encargo";
+                const nombreCliente = pedidoData.fields.Nombre_Cliente || "Cliente";
+
+                if (abierta) {
+                    // Marcamos en Airtable que el cliente ha preguntado
+                    await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
+                    
+                    // 3. GENERAMOS EL LINK (Usando el servicio y solo texto)
+                    const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
+                    const linkWA = await escaparateService.formatearLinkWA("636796210", nombreCliente, mensajeWA);
+                    
+                    await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras directamente:", [
+                        [{ text: "📲 Hablar por WhatsApp", url: linkWA }],
+                        [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
+                    ]);
+                } else {
+                    // TALLER CERRADO: Registro automático de consulta
+                    await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
+                    await airtableService.registrarConsultaAutomatica(
+                        chatId, 
+                        user, 
+                        nombreCliente, 
+                        pedidoData.fields.Telefono || "", 
+                        `Consulta sobre: ${detallePedido}`
+                    );
+                    
+                    await enviarMensajeConBotones(chatId, `¡Hola! Ahora mismo el taller está cerrado 😴. He dejado una nota en tu ficha y mañana mismo Reyes o Begoña te dirán algo. ✨`, [
+                        [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
+                    ]);
+                }
+                return res.status(200).json({ ok: true });
+            }
+
+            // VOLVER AL INICIO 🫧 LIMPIO
             else if (data === "CLI_INICIO") {
                 // CAMBIO AQUÍ: Añadir el prefijo escaparateService.
                 const botones = escaparateService.obtenerBotonesMenuPrincipal(); 
@@ -404,7 +450,7 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
-            // HORARIO
+            // HORARIO 🫧 LIMPIO
             if (data === "CLI_HORARIO") {
                 await responderBoton(callback_query.id);
                 const abierta = escaparateService.estaLaTiendaAbierta();
@@ -430,27 +476,7 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
-            // CONSULTAR ESTADO DE PEDIDO 
-            const esRespuestaAlTicket = esRespuesta && message.reply_to_message.text.includes("Número de Pedido");
-
-            if (esRespuestaAlTicket) {
-                await enviarMensajeSimple(chatId, "🔍 Validando código de seguridad...");
-                
-                const pedido = await escaparateService.buscarPedidoPorTicket(textoRecibido, airtableService);
-
-                if (pedido) {
-                    const mensajeIndividual = escaparateService.formatearMensajePedido(pedido, 0);
-                    const botonesIndividuales = [[{ text: "🙋 ¡Tengo una duda sobre este!", callback_data: `INT_PEDIDO_${pedido.id}` }]];
-                    await enviarMensajeConBotones(chatId, mensajeIndividual, botonesIndividuales);
-                } else {
-                    await enviarMensajeSimple(chatId, "😔 No encuentro ningún pedido con ese código. Revisa que esté bien escrito (incluyendo el #REF-).");
-                }
-                
-                const botonesMenu = escaparateService.obtenerBotonesMenuPrincipal();
-                await enviarMensajeConBotones(chatId, "¿Ayudo en algo más?", [[{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]]);
-                return res.status(200).json({ ok: true }); 
-            }
-
+      
             // CATÁLOGO DE TELAS 
             else if (data === "CLI_TELAS") {
                 await responderBoton(callback_query.id);
@@ -548,52 +574,7 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
-            // 🫧 CORREGIDO: Bloque de Interés en Pedido Específico
-            else if (data.startsWith("INT_PEDIDO_")) {
-                const idPedido = data.replace("INT_PEDIDO_", "");
-                const abierta = escaparateService.estaLaTiendaAbierta();
-                
-                // 1. Obtenemos el registro completo de Airtable
-                const pedidoData = await airtableService.obtenerPedidoPorId(idPedido);
-
-                if (!pedidoData || !pedidoData.fields) {
-                    await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles de ese encargo en mi libreta.");
-                    return res.status(200).json({ ok: true });
-                }
-
-                // 2. EXTRAEMOS LOS DATOS CORRECTAMENTE (Desde .fields)
-                const detallePedido = pedidoData.fields.Pedido_Detalle || "mi encargo";
-                const nombreCliente = pedidoData.fields.Nombre_Cliente || "Cliente";
-
-                if (abierta) {
-                    // Marcamos en Airtable que el cliente ha preguntado
-                    await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
-                    
-                    // 3. GENERAMOS EL LINK (Usando el servicio y solo texto)
-                    const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
-                    const linkWA = await escaparateService.formatearLinkWA("636796210", nombreCliente, mensajeWA);
-                    
-                    await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras directamente:", [
-                        [{ text: "📲 Hablar por WhatsApp", url: linkWA }],
-                        [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
-                    ]);
-                } else {
-                    // TALLER CERRADO: Registro automático de consulta
-                    await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
-                    await airtableService.registrarConsultaAutomatica(
-                        chatId, 
-                        user, 
-                        nombreCliente, 
-                        pedidoData.fields.Telefono || "", 
-                        `Consulta sobre: ${detallePedido}`
-                    );
-                    
-                    await enviarMensajeConBotones(chatId, `¡Hola! Ahora mismo el taller está cerrado 😴. He dejado una nota en tu ficha y mañana mismo Reyes o Begoña te dirán algo. ✨`, [
-                        [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
-                    ]);
-                }
-                return res.status(200).json({ ok: true });
-            }
+           
 
             // --- MÓDULO ACADEMIA ---
 
@@ -842,12 +823,169 @@ module.exports = async function handler(req, res) {
             const textoMinus = textoRecibido.toLowerCase();
             const esRespuesta = !!message.reply_to_message;
             
-            //COMANDO GLOBAL DE CANCELACIÓN PARA TODO EL MUNDO
+            // 🌍 PROCESOS GLOBALES (Admin y Cliente) 🫧 LIMPIO
+            // COMANDO GLOBAL DE CANCELACIÓN PARA TODO EL MUNDO
             if (textoMinus === "cancelar") {
                 try { await airtableService.cancelarBorradorPedido(chatId); } catch (e) {}
                 await enviarMensajeSimple(chatId, "❌ Operación cancelada.");
                 return res.status(200).json({ ok: true });
             }
+
+            // INTERCEPTOR DE TICKET (#REF) 🫧 LIMPIO
+
+            const esRespuestaAlTicket = esRespuesta && 
+                (replyText.includes("Número de Pedido") || replyText.includes("#REF"));
+
+            if (esRespuestaAlTicket) {
+                const pedido = await escaparateService.buscarPedidoPorTicket(textoRecibido, airtableService);
+                if (pedido) {
+                    const txt = `🧵 **Encargo Encontrado**\n📦 **Detalle:** ${pedido.detalle}\n📌 **Estado:** ${pedido.estado}\n📅 **Entrega:** ${pedido.entrega}`;
+                    await enviarMensajeConBotones(chatId, txt, [[{ text: "🙋 ¡Tengo una duda!", callback_data: `INT_PEDIDO_${pedido.id}` }]]);
+                } else {
+                    await enviarMensajeSimple(chatId, "😔 No encuentro ningún pedido con ese código. Revisa que esté bien escrito.");
+                }
+                return res.status(200).json({ ok: true });
+            }
+
+            // FLUJO DE PEDIDOS (Borradores paso a paso) 🫧 LIMPIO
+            const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
+
+            if (borradorPedido && borradorPedido.id) {
+                const result = await orderService.handleOrderWorkflow(
+                    chatId, 
+                    replyText.toLowerCase(), 
+                    textoRecibido, 
+                    borradorPedido.id
+                );
+
+                if (result.isFinal) {
+                    // ✨ Usamos result.ticketNum para que en el WhatsApp solo salgan los números
+                    const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código es: ${result.ticketNum}. Úsalo aquí mismo para ver cómo va tu encargo. 🧵`;
+                    
+                    const linkWA = await escaparateService.formatearLinkWA(
+                        result.clienteTelefono, 
+                        result.clienteNombre, 
+                        mensajeWA
+                    );
+                
+                    await enviarMensajeConBotones(chatId, result.text, [
+                        [{ text: "📲 Enviar Ticket por WhatsApp", url: linkWA }]
+                    ]);
+                }
+
+                 else {
+                    await enviarMensajeConReply(chatId, result.text);
+                }
+                return res.status(200).json({ ok: true });
+            }
+
+            // FLUJOS BASADOS EN METADATOS (Caja 1, 2 y 3)
+            const metadata = extraerMetadata(replyText);
+
+            if (metadata && metadata.step) {
+                const paso = metadata.step; // DECLARACIÓN ÚNICA
+
+                // A. INVENTARIO IA 🫧 LIMPIO
+                if (paso.startsWith("ESPERANDO_")) {
+                    const result = await inventoryService.handleInventoryIAWorkflow(chatId, metadata, textoRecibido);
+                    if (result.type === 'reply') {
+                        await enviarMensajeConReply(chatId, result.text);
+                    } else {
+                        await enviarMensajeSimple(chatId, result.text);
+                    }
+                    return res.status(200).json({ ok: true });
+                }
+
+                // B. ESCAPARATE (CONSULTAS CLIENTES) 🫧 LIMPIO
+                if (["ESP_CONSULTA", "ESP_NOMBRE", "ESP_TELEFONO"].includes(paso)) {
+                    const result = await escaparateService.handleConsultationWorkflow(textoRecibido, metadata);
+                    if (result.isFinal) {
+                        await enviarMensajeSimple(chatId, "⏳ Guardando todo en el libro de hilos...");
+                        await airtableService.guardarConsultaFinal(result.meta);
+                        const abierta = escaparateService.estaLaTiendaAbierta();
+                        if (abierta) {
+                            const mensajeWA = `¡Hola! Soy ${result.meta.nombreCliente}. Os escribo por la consulta: "${result.meta.mensajeConsulta}"`;
+                            const linkWA = await escaparateService.formatearLinkWA("636796210", result.meta.nombreCliente, mensajeWA);
+                            await enviarMensajeConBotones(chatId, `✅ ¡Hecho! Ya podéis hablar por aquí:`, [
+                                [{ text: "📲 WhatsApp Directo", url: linkWA }],
+                                [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
+                            ]);
+                        } else {
+                            await enviarMensajeConBotones(chatId, result.text, [[{ text: "🏠 Menú", callback_data: "CLI_INICIO" }]]);
+                        }
+                    } else {
+                        await enviarMensajeConReply(chatId, `${result.text}\n\n(DATOS_IA: ${JSON.stringify(result.meta)})`);
+                    }
+                    return res.status(200).json({ ok: true });
+                }
+
+                // ACADEMIA (CAJA 3: ALUMNAS) 
+                if (paso.startsWith("ACAD_")) {
+                        try {
+                            const nombreHumano = textoRecibido.trim();
+                            // Buscamos la ficha actual
+                            const ficha = await airtableService.obtenerFichaAlumna(chatId);
+                            
+                            if (ficha && ficha.id) {
+                                // Caso A: La ficha existe (está en "Pendiente"), la actualizamos
+                                await airtableService.base('Alumnas_Comunidad').update(ficha.id, {
+                                    "Nombre_Real": nombreHumano 
+                                });
+                                
+                                metadata.step = "ACAD_ESP_PROYECTO";
+                                metadata.nombreReal = nombreHumano;
+                    
+                                await enviarMensajeConReply(chatId, 
+                                    `✅ ¡Perfecto, **${nombreHumano}**! Ya estás en la libretita.\n\n¿En qué **Proyecto** estás trabajando hoy? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                            } else {
+                                // Caso B: No hay ficha, la creamos de cero con el nombre ya puesto
+                                await airtableService.base('Alumnas_Comunidad').create([{
+                                    fields: {
+                                        "Telegram_ID": String(chatId), // Siempre String para evitar líos
+                                        "Nombre_Real": nombreHumano,
+                                        "Notas_Tecnicas": "Alta directa desde cambio de nombre. ✨"
+                                    }
+                                }]);
+                                
+                                metadata.step = "ACAD_ESP_PROYECTO";
+                                await enviarMensajeConReply(chatId, `✅ ¡Anotada, **${nombreHumano}**! Cuéntame, ¿en qué **Proyecto** estamos? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                            }
+                        } catch (e) {
+                            console.error("💥 ERROR CRÍTICO NOMBRE_REAL:", e.message);
+                            // Si hay error, le damos una salida amable al usuario
+                            await enviarMensajeSimple(chatId, "❌ No he podido guardar tu nombre en la tabla. Revisa que la columna se llame exactamente 'Nombre_Real' y que no sea el campo primario con restricciones.");
+                        }
+                        return res.status(200).json({ ok: true });
+                    }
+                
+                    // --- PASO: CAPTURAR PROYECTO ---
+                    else if (paso === "ACAD_ESP_PROYECTO") {
+                        metadata.proyecto = textoRecibido;
+                        metadata.step = "ACAD_ESP_TECNICO";
+                
+                        await enviarMensajeConReply(chatId, 
+                            `🧵 ¡Qué bien suena! **${textoRecibido}**.\n\n¿Qué **Número de Aguja** estás usando?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                        return res.status(200).json({ ok: true });
+                    }
+                }
+                
+                /// --- D. TRABAJOS (ADMIN - MOSTRADOR) ---
+                if (paso === "ESP_NOMBRE_TRABAJO") {
+                    metadata.nombre = textoRecibido;
+                    metadata.step = "ESP_CATEGORIA_TRABAJO";
+                    
+                    const botonesCat = [
+                        [{ text: "👗 Ropa", callback_data: `CAT_TRAB|Ropa|${metadata.uniqueId}` }, 
+                        { text: "👜 Bolsos", callback_data: `CAT_TRAB|Bolsos|${metadata.uniqueId}` }],
+                        [{ text: "👶 Bebes", callback_data: `CAT_TRAB|Bebes|${metadata.uniqueId}` }, 
+                        { text: "✨ Otros", callback_data: `CAT_TRAB|Otros|${metadata.uniqueId}` }]
+                    ];
+            
+                    cacheFotos[metadata.uniqueId + "_meta"] = JSON.stringify(metadata);
+            
+                    await enviarMensajeConBotones(chatId, `Perfecto: "${metadata.nombre}". ¿En qué categoría lo guardamos?`, botonesCat);
+                    return res.status(200).json({ ok: true });
+                }
 
             // FLUJO DE ADMIN
 
@@ -889,152 +1027,14 @@ module.exports = async function handler(req, res) {
                         return res.status(200).json({ ok: true });
                     }
 
-                    // 🫧 LIMPIO 3. FLUJO DE PEDIDOS (Borradores paso a paso)
-                    const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
 
-                    if (borradorPedido && borradorPedido.id) {
-                        const result = await orderService.handleOrderWorkflow(
-                            chatId, 
-                            replyText.toLowerCase(), 
-                            textoRecibido, 
-                            borradorPedido.id
-                        );
-
-                        if (result.isFinal) {
-                            // ✨ Usamos result.ticketNum para que en el WhatsApp solo salgan los números
-                            const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código es: ${result.ticketNum}. Úsalo aquí mismo para ver cómo va tu encargo. 🧵`;
-                            
-                            const linkWA = await escaparateService.formatearLinkWA(
-                                result.clienteTelefono, 
-                                result.clienteNombre, 
-                                mensajeWA
-                            );
-                        
-                            await enviarMensajeConBotones(chatId, result.text, [
-                                [{ text: "📲 Enviar Ticket por WhatsApp", url: linkWA }]
-                            ]);
-                        }
-
-                         else {
-                            await enviarMensajeConReply(chatId, result.text);
-                        }
+                    // 🫧 LIMPIO 3. RESPUESTA A TAREAS (Si el bot pidió la descripción) 🫧 LIMPIO
+                    if (replyText.includes("Escribe la descripción de la tarea")) {
+                        const taskData = await taskService.handleTaskInput(chatId, textoRecibido);
+                        await enviarMensajeConBotones(chatId, taskData.text, taskData.buttons);
                         return res.status(200).json({ ok: true });
-                    }
-                    // 🫧 LIMPIO 4. FLUJOS BASADOS EN METADATOS (Caja 1, 2 y 3)
-                    const metadata = extraerMetadata(replyText);
-
-                    if (metadata && metadata.step) {
-                        const paso = metadata.step; // DECLARACIÓN ÚNICA
-
-                        // --- A. INVENTARIO IA (CAJA 1: MOSTRADOR) ---
-                        if (paso.startsWith("ESPERANDO_")) {
-                            const result = await inventoryService.handleInventoryIAWorkflow(chatId, metadata, textoRecibido);
-                            if (result.type === 'reply') {
-                                await enviarMensajeConReply(chatId, result.text);
-                            } else {
-                                await enviarMensajeSimple(chatId, result.text);
-                            }
-                            return res.status(200).json({ ok: true });
-                        }
-
-                        // --- B. ESCAPARATE (CAJA 2: CONSULTAS CLIENTES) ---
-                        if (["ESP_CONSULTA", "ESP_NOMBRE", "ESP_TELEFONO"].includes(paso)) {
-                            const result = await escaparateService.handleConsultationWorkflow(textoRecibido, metadata);
-                            if (result.isFinal) {
-                                await enviarMensajeSimple(chatId, "⏳ Guardando todo en el libro de hilos...");
-                                await airtableService.guardarConsultaFinal(result.meta);
-                                const abierta = escaparateService.estaLaTiendaAbierta();
-                                if (abierta) {
-                                    const mensajeWA = `¡Hola! Soy ${result.meta.nombreCliente}. Os escribo por la consulta: "${result.meta.mensajeConsulta}"`;
-                                    const linkWA = await escaparateService.formatearLinkWA("636796210", result.meta.nombreCliente, mensajeWA);
-                                    await enviarMensajeConBotones(chatId, `✅ ¡Hecho! Ya podéis hablar por aquí:`, [
-                                        [{ text: "📲 WhatsApp Directo", url: linkWA }],
-                                        [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
-                                    ]);
-                                } else {
-                                    await enviarMensajeConBotones(chatId, result.text, [[{ text: "🏠 Menú", callback_data: "CLI_INICIO" }]]);
-                                }
-                            } else {
-                                await enviarMensajeConReply(chatId, `${result.text}\n\n(DATOS_IA: ${JSON.stringify(result.meta)})`);
-                            }
-                            return res.status(200).json({ ok: true });
-                        }
-
-                        // --- C. ACADEMIA (CAJA 3: ALUMNAS) ---
-                        if (paso.startsWith("ACAD_")) {
-                                try {
-                                    const nombreHumano = textoRecibido.trim();
-                                    // Buscamos la ficha actual
-                                    const ficha = await airtableService.obtenerFichaAlumna(chatId);
-                                    
-                                    if (ficha && ficha.id) {
-                                        // Caso A: La ficha existe (está en "Pendiente"), la actualizamos
-                                        await airtableService.base('Alumnas_Comunidad').update(ficha.id, {
-                                            "Nombre_Real": nombreHumano 
-                                        });
-                                        
-                                        metadata.step = "ACAD_ESP_PROYECTO";
-                                        metadata.nombreReal = nombreHumano;
-                            
-                                        await enviarMensajeConReply(chatId, 
-                                            `✅ ¡Perfecto, **${nombreHumano}**! Ya estás en la libretita.\n\n¿En qué **Proyecto** estás trabajando hoy? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
-                                    } else {
-                                        // Caso B: No hay ficha, la creamos de cero con el nombre ya puesto
-                                        await airtableService.base('Alumnas_Comunidad').create([{
-                                            fields: {
-                                                "Telegram_ID": String(chatId), // Siempre String para evitar líos
-                                                "Nombre_Real": nombreHumano,
-                                                "Notas_Tecnicas": "Alta directa desde cambio de nombre. ✨"
-                                            }
-                                        }]);
-                                        
-                                        metadata.step = "ACAD_ESP_PROYECTO";
-                                        await enviarMensajeConReply(chatId, `✅ ¡Anotada, **${nombreHumano}**! Cuéntame, ¿en qué **Proyecto** estamos? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
-                                    }
-                                } catch (e) {
-                                    console.error("💥 ERROR CRÍTICO NOMBRE_REAL:", e.message);
-                                    // Si hay error, le damos una salida amable al usuario
-                                    await enviarMensajeSimple(chatId, "❌ No he podido guardar tu nombre en la tabla. Revisa que la columna se llame exactamente 'Nombre_Real' y que no sea el campo primario con restricciones.");
-                                }
-                                return res.status(200).json({ ok: true });
-                            }
-                        
-                            // --- PASO: CAPTURAR PROYECTO ---
-                            else if (paso === "ACAD_ESP_PROYECTO") {
-                                metadata.proyecto = textoRecibido;
-                                metadata.step = "ACAD_ESP_TECNICO";
-                        
-                                await enviarMensajeConReply(chatId, 
-                                    `🧵 ¡Qué bien suena! **${textoRecibido}**.\n\n¿Qué **Número de Aguja** estás usando?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
-                                return res.status(200).json({ ok: true });
-                            }
-                        }
-                        
-                        /// --- D. TRABAJOS (ADMIN - MOSTRADOR) ---
-                        if (paso === "ESP_NOMBRE_TRABAJO") {
-                            metadata.nombre = textoRecibido;
-                            metadata.step = "ESP_CATEGORIA_TRABAJO";
-                            
-                            const botonesCat = [
-                                [{ text: "👗 Ropa", callback_data: `CAT_TRAB|Ropa|${metadata.uniqueId}` }, 
-                                { text: "👜 Bolsos", callback_data: `CAT_TRAB|Bolsos|${metadata.uniqueId}` }],
-                                [{ text: "👶 Bebes", callback_data: `CAT_TRAB|Bebes|${metadata.uniqueId}` }, 
-                                { text: "✨ Otros", callback_data: `CAT_TRAB|Otros|${metadata.uniqueId}` }]
-                            ];
-                    
-                            cacheFotos[metadata.uniqueId + "_meta"] = JSON.stringify(metadata);
-                    
-                            await enviarMensajeConBotones(chatId, `Perfecto: "${metadata.nombre}". ¿En qué categoría lo guardamos?`, botonesCat);
-                            return res.status(200).json({ ok: true });
-                        }
-
-                         // 🫧 LIMPIO 5. RESPUESTA A TAREAS (Si el bot pidió la descripción) 🫧 LIMPIO
-                        if (replyText.includes("Escribe la descripción de la tarea")) {
-                            const taskData = await taskService.handleTaskInput(chatId, textoRecibido);
-                            await enviarMensajeConBotones(chatId, taskData.text, taskData.buttons);
-                            return res.status(200).json({ ok: true });
-                        }
-                    
+                    }        
+                
 
                     // VISUALIZAR
 
