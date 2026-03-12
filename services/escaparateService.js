@@ -50,41 +50,45 @@ class EscaparateService {
 
 // Procesa la búsqueda de pedidos filtrando por número ID de pedido
 
-a// services/escaparateService.js
+// services/escaparateService.js
 
 async buscarPedidoPorTicket(textoUsuario, airtableService) {
-    // 1. Limpieza extrema: quitamos prefijos, espacios y forzamos Mayúsculas
-    const soloNumeros = textoUsuario.toUpperCase().replace(/#REF-/g, "").trim();
-    
-    if (!soloNumeros) return null;
+    if (!textoUsuario) return null;
 
-    // 2. Reconstruimos el ID exacto
-    const ticketExacto = `#REF-${soloNumeros}`;
+    // 1. Limpiamos el texto
+    let busqueda = textoUsuario.trim();
     
-    // Debug: Esto saldrá en tus logs de Vercel para que veas qué busca
-    console.log(`🔎 Buscando ticket: "${ticketExacto}" en la columna ID_Pedido_Unico`);
+    // 2. Si ya es un ID de Airtable (empieza por 'rec'), no le ponemos #REF-
+    let formula = "";
+    if (busqueda.startsWith('rec')) {
+        // Buscamos directamente por RECORD_ID() en Airtable
+        formula = `RECORD_ID() = '${busqueda}'`;
+    } else {
+        // Es un ticket manual (ej: 1234 o #REF-1234)
+        const soloNumeros = busqueda.toUpperCase().replace(/#REF-/g, "").trim();
+        const ticketExacto = `#REF-${soloNumeros}`;
+        formula = `{ID_Pedido_Unico} = '${ticketExacto}'`;
+    }
 
     try {
-        // 3. Fórmula de Airtable (Asegúrate de que el nombre de la columna sea idéntico)
-        const formula = `{ID_Pedido_Unico} = '${ticketExacto}'`;
-        
+        console.log(`🔎 Ejecutando fórmula en Airtable: ${formula}`);
         const registros = await airtableService.base(airtableService.t.pedidos).select({
             filterByFormula: formula,
             maxRecords: 1
         }).all();
 
         if (registros && registros.length > 0) {
-            const p = registros[0].fields;
+            const r = registros[0];
             return {
-                id: registros[0].id,
-                detalle: p.Pedido_Detalle,
-                estado: p.Estado,
-                entrega: p.Fecha_Entrega,
-                nombre: p.Nombre_Cliente
+                id: r.id,
+                detalle: r.fields.Pedido_Detalle,
+                estado: r.fields.Estado,
+                nombre: r.fields.Nombre_Cliente
             };
         }
         return null;
     } catch (e) {
+        console.error("❌ Error en búsqueda fallback:", e);
         return null;
     }
 }

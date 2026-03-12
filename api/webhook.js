@@ -394,33 +394,44 @@ module.exports = async function handler(req, res) {
             }
 
              // Interés en un pedido específico 🫧 LIMPIO
-            else if (data.startsWith("INT_PEDIDO_")) {
-            // Añadimos .trim() para limpiar espacios fantasma
-                const idPedido = data.replace("INT_PEDIDO_", "").trim(); 
-                const abierta = escaparateService.estaLaTiendaAbierta();
+             else if (data.startsWith("INT_PEDIDO_")) {
+                // 1. Limpiamos bien el ID que viene del botón
+                const idPedidoRaw = data.replace("INT_PEDIDO_", "").trim();
                 
-                // DEBUG: Mira esto en los logs de Vercel
-                console.log(`🔎 Botón pulsado para ID: ${idPedido}`);
-
-                // 1. Buscamos por el ID real (Record ID)
-                const pedidoData = await airtableService.obtenerPedidoPorId(idPedido);
-
+                console.log("🔍 Intentando recuperar pedido con ID/Ticket:", idPedidoRaw);
+            
+                let pedidoData = null;
+            
+                // 2. Intento A: Buscar por ID interno de Airtable (rec...)
+                if (idPedidoRaw.startsWith('rec')) {
+                    pedidoData = await airtableService.obtenerPedidoPorId(idPedidoRaw);
+                }
+            
+                // 3. Intento B (Salvavidas): Si no lo encontró o el ID no era 'rec', buscamos por Ticket #REF
                 if (!pedidoData || !pedidoData.fields) {
-                    // Si falla, intentamos buscarlo como si fuera un ticket (por si el botón es viejo)
-                    console.log("⚠️ No encontrado por ID, intentando búsqueda por Ticket...");
-                    const pedidoFallback = await escaparateService.buscarPedidoPorTicket(idPedido, airtableService);
-                    
-                    if (!pedidoFallback) {
-                        await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles. Por favor, vuelve a buscar tu pedido con el código #REF.");
-                        return res.status(200).json({ ok: true });
+                    console.log("⚠️ No encontrado por ID, buscando por Ticket #REF...");
+                    // Esta función busca en la columna {ID_Pedido_Unico}
+                    const fallback = await escaparateService.buscarPedidoPorTicket(idPedidoRaw, airtableService);
+                    if (fallback && fallback.id) {
+                        pedidoData = await airtableService.obtenerPedidoPorId(fallback.id);
                     }
-                    // Si lo encuentra por ticket, redirigimos los datos
+                }
+            
+                // 4. Si después de los dos intentos no hay nada...
+                if (!pedidoData || !pedidoData.fields) {
+                    console.log("❌ Pedido no encontrado en ningún formato.");
+                    await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles. Por favor, vuelve a buscar tu pedido con el código #REF para actualizar la conexión.");
                     return res.status(200).json({ ok: true });
                 }
-
+            
+                // 5. Si lo encontramos, procedemos con el mensaje de WhatsApp
+                const p = pedidoData.fields;
+                const detallePedido = p.Pedido_Detalle || "mi encargo";
+                const nombreCliente = p.Nombre_Cliente || user;
+                const abierta = escaparateService.estaLaTiendaAbierta();
+            
                 if (abierta) {
-                    await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
-                    // 2. Usamos el servicio modular para el link
+                    await airtableService.actualizarEstadoPedido(pedidoData.id, "🙋Cliente Interesado");
                     const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
                     const linkWA = await escaparateService.formatearLinkWA("636796210", nombreCliente, mensajeWA);
                     
@@ -428,23 +439,11 @@ module.exports = async function handler(req, res) {
                         [{ text: "📲 Hablar por WhatsApp", url: linkWA }],
                         [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
                     ]);
-
                 } else {
-
-                    await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
-                    await airtableService.registrarConsultaAutomatica(
-                        chatId, 
-                        user, 
-                        nombreCliente, 
-                        pedidoData.fields.Telefono || "", 
-                        `Consulta sobre: ${detallePedido}`
-                    );
-                    
-                    await enviarMensajeConBotones(chatId, `¡Hola! El taller está cerrado 😴. He dejado una nota y mañana te diremos algo. ✨`, [
-                        [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
-                    ]);
+                    await airtableService.registrarConsultaAutomatica(chatId, user, nombreCliente, p.Telefono || "", `Duda pedido: ${detallePedido}`);
+                    await enviarMensajeConBotones(chatId, `¡Hola! El taller está cerrado 😴. He dejado una nota y mañana te diremos algo. ✨`, [[{ text: "🏠 Menú", callback_data: "CLI_INICIO" }]]);
                 }
-                return res.status(200).json({ ok: true }); // ✅ Cierre seguro
+                return res.status(200).json({ ok: true });
             }
 
             // VOLVER AL INICIO 🫧 LIMPIO
