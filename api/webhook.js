@@ -395,7 +395,8 @@ module.exports = async function handler(req, res) {
 
              // Interés en un pedido específico 🫧 LIMPIO
             else if (data.startsWith("INT_PEDIDO_")) {
-                const idPedido = data.replace("INT_PEDIDO_", "");
+            // Añadimos .trim() para limpiar espacios fantasma
+                const idPedido = data.replace("INT_PEDIDO_", "").trim(); 
                 const abierta = escaparateService.estaLaTiendaAbierta();
                 
                 // ✨ Definimos 'user' para que no de error en la consulta automática
@@ -830,8 +831,7 @@ module.exports = async function handler(req, res) {
 
             //Extraemos metadata y DEFINIMOS 'paso' para todo el mundo 
             const metadata = extraerMetadata(replyText);
-            const paso = metadata ? metadata.step : null; // <--- Definición global
-
+            const paso = metadata ? metadata.step : null; 
             // COMANDO GLOBAL DE CANCELACIÓN PARA TODO EL MUNDO 🫧 LIMPIO
             if (textoMinus === "cancelar") {
                 try { await airtableService.cancelarBorradorPedido(chatId); } catch (e) {}
@@ -840,7 +840,6 @@ module.exports = async function handler(req, res) {
             }
 
             // INTERCEPTOR DE TICKET (#REF) 🫧 LIMPIO
-
             const esRespuestaAlTicket = esRespuesta && 
                 (replyText.includes("Número de Pedido") || replyText.includes("#REF"));
 
@@ -1071,7 +1070,7 @@ module.exports = async function handler(req, res) {
                 // ---------------------------------------------------------
                 
                 
-                /// WHATSAPP DIRECTO UNIVERSAL (Pedidos + Consultas)
+                /// WHATSAPP DIRECTO UNIVERSAL (Pedidos + Consultas) 🫧 LIMPIO
                 if (textoMinus.startsWith("wa:")) {
                     const nombreBusqueda = textoRecibido.split(":")[1]?.trim();
                     if (!nombreBusqueda) {
@@ -1131,10 +1130,9 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true });
                 }
               
-                // COMANDOS DE INVENTARIO
+                // COMANDOS DE INVENTARIO 🫧 LIMPIO
 
-
-                // COMANDO STOCK / INVENTARIO  🫧 LIMPIO
+                // Comando stcock/inventario 
                 if (textoMinus.includes("stock") || textoMinus.includes("inventario")) {
                     const busq = textoMinus.replace(/stock|inventario|de/gi, "").trim();
                     
@@ -1154,8 +1152,7 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true });
                 }
 
-                // COMANDO AÑADIR ARTÍCULO MANUALMENTE
-
+                // Añadir artículo manualmente 
                 else if (textoMinus.includes("añadir artículo") || textoMinus.includes("nuevo producto")) {
                     // Inicializamos la mochila de datos con el primer paso
                     const metadataManual = { 
@@ -1170,9 +1167,9 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true });
                 }
 
-                // COMANDOS PARA PEDIDOS
+                // COMANDOS PARA PEDIDOS 🫧 LIMPIO
 
-                //Nuevo pedido
+                //Nuevo pedido 
                 if (/^pedido\s*:/i.test(textoRecibido)) {
                     const detalle = textoRecibido.replace(/^pedido\s*:\s*/i, "").trim();
                     
@@ -1209,9 +1206,9 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true });
                 }
 
-                 // COMANDOS PARA TAREAS
+                 // COMANDOS PARA TAREAS 🫧 LIMPIO
 
-                // Caso A: Crear nueva tarea
+                // Caso A: Crear nueva tarea 
                 if (textoMinus.startsWith("tarea:")) {
                     const response = await taskService.handleTaskInput(chatId, textoRecibido);
                     await enviarMensajeConBotones(chatId, response.text, response.buttons);
@@ -1234,6 +1231,7 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true });
 
                 }
+
                 // COMANDOS DE PURGA
                 if (textoMinus === "/purgar" || textoMinus === "limpiar todo") {
                     const nTareas = await airtableService.vaciarHistorialTareas();
@@ -1242,9 +1240,9 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true });
                 }
 
-                // COMANDOS PARA GESTIONAR LA CLIENTELA
+                // COMANDOS PARA GESTIONAR LA CLIENTELA 🫧 LIMPIO
 
-                // LIMPIO 🫧 Ver consultas de clientes  🫧 LIMPIO
+                // Ver consultas de clientes  
                 if (textoMinus === "/consultas" || textoMinus === "consultas") {
                     const consultData = await orderService.getPendingConsultations();
                     await enviarMensajeSimple(chatId, consultData.text);
@@ -1257,7 +1255,7 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true });
                 }
 
-                /// 🫧 LIMPIO Comando: /interesados (Ver quién ha preguntado por su pedido) 🫧 LIMPIO
+                /// Comando: /interesados (Ver quién ha preguntado por su pedido) 
                 if (textoMinus === "/interesados" || textoMinus === "interesados") {
                     // Delegamos la búsqueda y generación de botones al servicio de pedidos
                     const interestedData = await orderService.getInterestedClients();
@@ -1272,7 +1270,7 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true });
                 }
 
-                // Si es un Admin y escribe algo que no reconoce, la IA responde (cajón de sastre)
+                // Si es un Admin y escribe algo que no reconoce, la IA responde (cajón de sastre) 🫧 LIMPIO
                if (!esRespuesta && !textoMinus.startsWith("/")) {
                 const respuestaIA = await openaiService.generarRespuesta(textoRecibido);
                 await enviarMensajeSimple(chatId, respuestaIA);
@@ -1286,7 +1284,7 @@ module.exports = async function handler(req, res) {
 
             else { 
 
-                  // 1. SALUDO PRINCIPAL (Es lo primero que miramos para el cliente)
+                  // 1. SALUDO PRINCIPAL (Es lo primero que miramos para el cliente) 🫧 LIMPIO
                   if (textoMinus === "/start" || textoMinus === "hola" || textoMinus === "menú") {
                     const botones = escaparateService.obtenerBotonesMenuPrincipal(); 
                     const bienvenida = "¡Hola, primor! ✨ Soy Mamassistant, tu costurera digital. ¿En qué puedo ayudarte hoy?";
@@ -1295,63 +1293,8 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true }); 
                 }
             
-                // 0. Interceptor de Metadata (Flujo Consulta: Mensaje -> Nombre -> Teléfono)
-                const metadata = extraerMetadata(replyText); 
-
-                  
-                // 2. INTERCEPTOR DE METADATA (Pasos de la consulta) 🫧 LIMPIO
-
-                // Usamos 'paso' que ya definimos arriba (en la parte global) como metadata.step
-                if (paso) {
-
-                    // PASO 1: RECIBIMOS LA CONSULTA -> PEDIMOS NOMBRE
-                    if (paso === "ESP_CONSULTA") {
-                        metadata.mensajeConsulta = textoRecibido;
-                        metadata.step = "ESP_NOMBRE";
-                        await enviarMensajeConReply(chatId, `📝 Anotado. ¿A nombre de quién pongo la consulta, primor?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
-                        return res.status(200).json({ ok: true });
-                    }
-                    
-                    // PASO 2: RECIBIMOS NOMBRE -> PEDIMOS TELÉFONO
-                    else if (paso === "ESP_NOMBRE") {
-                        metadata.nombreCliente = textoRecibido;
-                        metadata.step = "ESP_TELEFONO";
-                        await enviarMensajeConReply(chatId, `🏷️ Muy bien, **${textoRecibido}**. \n¿A qué número de **Teléfono** podemos contactarte?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
-                        return res.status(200).json({ ok: true });
-                    }
-                    
-                    // PASO 3: RECIBIMOS TELÉFONO -> GUARDADO FINAL
-                    else if (paso === "ESP_TELEFONO") {
-                        metadata.telefonoCliente = textoRecibido;
-                        const abierta = escaparateService.estaLaTiendaAbierta();
-                        metadata.estado = abierta ? "WhatsApp Abierto" : "Pendiente";
-
-                        await enviarMensajeSimple(chatId, "⏳ Guardando todo en el libro de hilos...");
-                        await airtableService.guardarConsultaFinal(metadata);
-
-                        if (abierta) {
-
-                            // Usamos el servicio escaparateService
-                            const linkWA = await escaparateService.formatearLinkWA(
-                                "636796210", 
-                                metadata.nombreCliente, 
-                                `¡Hola! Soy ${metadata.nombreCliente}. Os escribo por la consulta: "${metadata.mensajeConsulta}"`
-                            );
                             
-                            await enviarMensajeConBotones(chatId, `✅ ¡Hecho! Ya podéis hablar por aquí:`, [
-                                [{ text: "📲 WhatsApp Directo", url: linkWA }],
-                                [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
-                            ]);
-                        } else {
-                            await enviarMensajeConBotones(chatId, `✅ ¡Anotado, ${metadata.nombreCliente}! Mañana Reyes o Begoña te responderán al ${metadata.telefonoCliente} sobre tu duda. ✨`, [
-                                [{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]
-                            ]);
-                        }
-                        return res.status(200).json({ ok: true });
-                    }
-                }
-                            
-                // NUEVO: Interceptor de IA para el ARCHIVADOR VISUAL
+                // Interceptor de IA para el ARCHIVADOR VISUAL
                 const palabrasClave = ['foto', 'ver', 'enseña', 'muestra', 'ejemplo', 'trabajo', 'hecho'];
                 const pareceBusqueda = palabrasClave.some(p => textoMinus.includes(p));
 
@@ -1383,7 +1326,7 @@ module.exports = async function handler(req, res) {
                     }
                 }
 
-                // 3. CAJÓN DE SASTRE (Solo se llega aquí si NO es saludo y NO hay metadatos)
+                // 3. CAJÓN DE SASTRE (Solo se llega aquí si NO es saludo y NO hay metadatos) 🫧 LIMPIO
                     const mensajeAyuda = "No te he entendido muy bien, primor. 🧵 ¿Quieres consultar un pedido o dejar una consulta? Usa los botones del /start";
                     await enviarMensajeSimple(chatId, mensajeAyuda);
                     return res.status(200).json({ ok: true }); // ✅ FINAL DE TRAYECTO
