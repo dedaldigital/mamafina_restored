@@ -829,7 +829,6 @@ module.exports = async function handler(req, res) {
             const esRespuesta = !!message.reply_to_message;
             //Definimos también aquí replyText
             const replyText = esRespuesta ? message.reply_to_message.text : "";
-
             
             // COMANDO GLOBAL DE CANCELACIÓN PARA TODO EL MUNDO
             if (textoMinus === "cancelar") {
