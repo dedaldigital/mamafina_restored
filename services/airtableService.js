@@ -143,6 +143,31 @@ class AirtableService {
             } catch (e) { this._logError(e, 'obtenerBorradorActivo'); }
         }
 
+        async obtenerFichaAlumna(chatId) {
+            try {
+                // Buscamos en la tabla de Alumnas (TB-11)
+                // Importante: El Telegram_ID en Airtable debe ser tipo Texto para evitar errores de formato
+                const records = await this.base(process.env.AT_TABLE_ALUMNAS).select({
+                    filterByFormula: `{Telegram_ID} = '${String(chatId)}'`,
+                    maxRecords: 1
+                }).firstPage();
+        
+                if (records && records.length > 0) {
+                    // Devolvemos el objeto con el ID de Airtable (record.id) y sus campos
+                    return {
+                        id: records[0].id,
+                        ...records[0].fields
+                    };
+                }
+        
+                // Si no existe, devolvemos null para que el Service sepa que debe crear una
+                return null;
+            } catch (error) {
+                console.error("💥 Error en airtableService.obtenerFichaAlumna:", error.message);
+                throw error; // Lanzamos el error para que el pararrayos del Webhook lo capture
+            }
+        }
+
 
         async actualizarEstadoPedido(idPedido, datos, tablaKey = 'pedidos') {
             try {

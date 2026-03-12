@@ -638,7 +638,7 @@ module.exports = async function handler(req, res) {
 
            
 
-            // BOTONES ACADEMIA 🫧 LIMPIO
+            // BOTONES ACADEMIA CLIENTES 🫧 LIMPIO
 
             // Menú Principal de Academia 🫧 LIMPIO
             if (data === "CLI_ACADEMIA") {
@@ -674,15 +674,33 @@ module.exports = async function handler(req, res) {
             }
 
                 // B. Mostrar huecos según tipo 🫧 LIMPIO
-                else if (data.startsWith("VER_CLASES|")) {
-                    const tipo = data.split('|')[1];
-                    const lista = await academiaService.listarHuecos(tipo);
-                    await enviarMensajeSimple(chatId, lista.text);
-                    if (lista.blocks) {
-                        for (const block of lista.blocks) {
-                            await enviarMensajeConBotones(chatId, block.text, block.buttons);
+                else if (data.startsWith("ACAD_VER_CLASES|")) {
+                    const tipo = data.split('|')[1]; // Extrae "Costura" o "Crochet"
+                    
+                    try {
+                        // 1. Llamamos al servicio (aquí es donde puede estar el fallo)
+                        const clases = await academiaService.obtenerClasesDisponibles(tipo);
+                
+                        if (!clases || clases.length === 0) {
+                            await enviarMensajeSimple(chatId, `Vaya, parece que ahora mismo no hay huecos disponibles para **${tipo}**. 🧵✨`);
+                        } else {
+                            await enviarMensajeSimple(chatId, `📍 Estas son las clases de **${tipo}** con plazas libres:`);
+                            
+                            for (const clase of clases) {
+                                const botones = [[{ 
+                                    text: "🙋‍♀️ Me interesa", 
+                                    callback_data: `INTERES_CLASE|${clase.id}` 
+                                }]];
+                                await enviarMensajeConBotones(chatId, clase.texto, botones);
+                            }
                         }
+                    } catch (error) {
+                        console.error("Error al listar clases:", error);
+                        await enviarMensajeSimple(chatId, "He tenido un problemilla al mirar la agenda. Prueba en un momento. 😅");
                     }
+                    await responderBoton(callback_query.id);
+                    return res.status(200).json({ ok: true });
+                }
             
                 // C. Mi ficha 🫧 LIMPIO  
                 else if (data === "ACAD_MI_FICHA") {
@@ -712,7 +730,6 @@ module.exports = async function handler(req, res) {
 
                     await editarMensajeConBotones(chatId, messageId, "🧵 **GESTIÓN DE LABOR**\n¿Qué detalle quieres anotar en tu proyecto hoy?", botonesLabor);
                 }
-            }
 
             
             //ALUMNA INTERESADA EN UNA CLASE 🫧 LIMPIO
