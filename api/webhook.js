@@ -460,7 +460,7 @@ module.exports = async function handler(req, res) {
                 await responderBoton(callback_query.id);
                 const abierta = escaparateService.estaLaTiendaAbierta();
                 let mensajeEstado, botonesHorario;
-                return res.status(200).json({ ok: true }); // FUERZO ABIERTO
+    
                 if (abierta) {
                     mensajeEstado = "¡Estamos en el taller! 🧵\n\nPuedes pasarte, hablarnos por WhatsApp...";
                     const linkWA = await formatearLinkWA("636796210", "Reyes y Begoña", "¡Hola! He visto que estáis abiertas...");
@@ -468,6 +468,7 @@ module.exports = async function handler(req, res) {
                         [{ text: "📲 Hablar por WhatsApp ahora", url: linkWA }],
                         [{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]
                     ];
+                    
                 } else {
                     mensajeEstado = "😴 **Ahora mismo el taller está cerrado.**";
                     botonesHorario = [
