@@ -399,22 +399,24 @@ module.exports = async function handler(req, res) {
                 const idPedido = data.replace("INT_PEDIDO_", "").trim(); 
                 const abierta = escaparateService.estaLaTiendaAbierta();
                 
-                
-                // ✨ Definimos 'user' para que no de error en la consulta automática
-                const user = callback_query.from.first_name || "Cliente";
-                const chatId = callback_query.message.chat.id;
+                // DEBUG: Mira esto en los logs de Vercel
+                console.log(`🔎 Botón pulsado para ID: ${idPedido}`);
 
-                // Buscamos por ID real
+                // 1. Buscamos por el ID real (Record ID)
                 const pedidoData = await airtableService.obtenerPedidoPorId(idPedido);
 
                 if (!pedidoData || !pedidoData.fields) {
-                    console.log("❌ Airtable no encontró el registro con ID:", idPedido);
-                    await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles de ese encargo en mi libreta.");
+                    // Si falla, intentamos buscarlo como si fuera un ticket (por si el botón es viejo)
+                    console.log("⚠️ No encontrado por ID, intentando búsqueda por Ticket...");
+                    const pedidoFallback = await escaparateService.buscarPedidoPorTicket(idPedido, airtableService);
+                    
+                    if (!pedidoFallback) {
+                        await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles. Por favor, vuelve a buscar tu pedido con el código #REF.");
+                        return res.status(200).json({ ok: true });
+                    }
+                    // Si lo encuentra por ticket, redirigimos los datos
                     return res.status(200).json({ ok: true });
                 }
-
-                const detallePedido = pedidoData.fields.Pedido_Detalle || "mi encargo";
-                const nombreCliente = pedidoData.fields.Nombre_Cliente || user;
 
                 if (abierta) {
                     await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
@@ -428,9 +430,8 @@ module.exports = async function handler(req, res) {
                     ]);
 
                 } else {
-                    
+
                     await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
-                    // ✨ Ahora 'user' ya está definido y no fallará
                     await airtableService.registrarConsultaAutomatica(
                         chatId, 
                         user, 
