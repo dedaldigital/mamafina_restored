@@ -373,8 +373,8 @@ class AirtableService {
             // 2. Aquí es donde "atrapamos" el ID invisible (record.id)
             return registros.map(record => ({
                 id: record.id,      // <--- ESTA ES LA CLAVE. No es una columna, es una propiedad del objeto record.
-                nombre: record.fields.Nombre,
-                duda: record.fields.Duda,
+                nombre: record.fields.Nombre_Cliente,
+                duda: record.fields.Consulta,
                 tel: record.fields.Telefono,
                 fecha: record.fields.Fecha
             }));
