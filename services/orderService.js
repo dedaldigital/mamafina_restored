@@ -71,19 +71,31 @@ class OrderService {
     async updateOrderStatus(idPedido, nuevoEstado) {
         try {
             await airtableService.actualizarEstadoPedido(idPedido, nuevoEstado);
-            let aviso = { text: `✅ Estado actualizado a: *${nuevoEstado}*`, button: null };
-
+            let aviso = { text: `✅ Estado actualizado a: *${nuevoEstado}*`, button: null, extraMsg: "" };
+    
             // Si el pedido está terminado, preparamos el botón de WhatsApp 
             if (nuevoEstado === "✅ Terminado") {
                 const ped = await airtableService.getPedidoPorId(idPedido); 
-                // Usamos la función de formateo (asumiendo que está disponible o la movemos a un util)
+                
+                // ✨ CORRECCIÓN: Extraemos los datos reales de ped.fields
+                const tel = ped.fields.Telefono;
+                const nombre = ped.fields.Nombre_Cliente || "cliente";
+    
+                // 1. Limpieza de teléfono (usando la variable correcta)
                 let telLimpio = tel ? String(tel).replace(/[^0-9]/g, '') : "";
                 if (telLimpio.length === 9 && /^[67]/.test(telLimpio)) {
                     telLimpio = '34' + telLimpio;
                 }
-                // 2. Creación del mensaje pre-rellenado
+    
+                // 2. Creación del mensaje y la URL
                 const mensajeRespuesta = `¡Hola ${nombre}! ✨ Tu pedido está listo. ¡Estoy deseando que lo veas!`;
                 const urlWA = telLimpio ? `https://wa.me/${telLimpio}?text=${encodeURIComponent(mensajeRespuesta)}` : null;
+    
+                // ✨ CORRECCIÓN: Guardamos el botón en el objeto aviso para que el webhook lo vea
+                if (urlWA) {
+                    aviso.extraMsg = `🎊 ¡Avisar a ${nombre}!`;
+                    aviso.button = [[{ text: "📲 WhatsApp", url: urlWA }]];
+                }
             }
             return aviso;
         } catch (e) {
@@ -91,7 +103,6 @@ class OrderService {
             return { text: "⚠️ No pude actualizar el estado en la base de datos." };
         }
     }
-
     // 5. LISTAR CONSULTAS: Recupera las dudas que los clientes dejaron en el buzón
     async getPendingConsultations() {
         try {
