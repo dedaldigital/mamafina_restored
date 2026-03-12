@@ -442,14 +442,24 @@ module.exports = async function handler(req, res) {
                     const abierta = escaparateService.estaLaTiendaAbierta();
                 
                     if (abierta) {
-                        await airtableService.actualizarEstadoPedido(pedidoData.id, "🙋Cliente Interesado");                        const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
-                        const linkWA = await escaparateService.formatearLinkWA("636796210", nombreCliente, mensajeWA);
-                        
-                        await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras:", [
-                            [{ text: "📲 Hablar por WhatsApp", url: linkWA }],
-                            [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
-                        ]);
-                    } else {
+                       // 1. Primero lanzamos la actualización y esperamos a que termine
+                    try {
+                        await airtableService.actualizarEstadoPedido(pedidoData.id, "🙋Cliente Interesado");
+                        console.log("✅ Estado actualizado en Airtable con éxito.");
+                    } catch (err) {
+                        console.log("⚠️ No se pudo actualizar el estado, pero seguimos con el mensaje...");
+                    }
+
+                    // 2. Preparamos el mensaje de WhatsApp (Separado por línea nueva)
+                    const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
+                    const linkWA = await escaparateService.formatearLinkWA("636796210", nombreCliente, mensajeWA);
+                    
+                    // 3. Enviamos los botones
+                    await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras:", [
+                        [{ text: "📲 Hablar por WhatsApp", url: linkWA }],
+                        [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
+                    ]);
+                                    } else {
                         await airtableService.registrarConsultaAutomatica(chatId, user, nombreCliente, p.Telefono || "", `Duda pedido: ${detallePedido}`);
                         await enviarMensajeConBotones(chatId, `¡Hola! El taller está cerrado 😴. He dejado una nota y mañana te diremos algo. ✨`, [[{ text: "🏠 Menú", callback_data: "CLI_INICIO" }]]);
                     }
@@ -1198,7 +1208,8 @@ module.exports = async function handler(req, res) {
                     
                     const nuevoP = await airtableService.iniciarBorradorPedido(chatId);
                     if (nuevoP && nuevoP.id) {
-                        await airtableService.actualizarPedido(nuevoP.id, { "Pedido_Detalle": detalle });
+                        // ✨ Usamos la nueva función pasando el objeto del detalle
+                        await airtableService.actualizarEstadoPedido(nuevoP.id, { "Pedido_Detalle": detalle });
                         await enviarMensajeConReply(chatId, `🧵 Entendido: *${detalle}*.\n¿Cuál es el **Nombre del Cliente**?`);
                     } else {
                         await enviarMensajeSimple(chatId, "❌ No pude iniciar el borrador en Airtable.");

@@ -129,33 +129,19 @@ class AirtableService {
         }
 
 
-        async actualizarPedido(id, campos) {
+        async actualizarEstadoPedido(idPedido, datos) {
             try {
-                // ✨ CORRECCIÓN: Simplificamos la sintaxis para un solo registro
-                return await this.base(this.t.pedidos).update(id, campos);
-            } catch (e) { this._logError(e, 'actualizarPedido'); }
-        }
-
-        async actualizarEstadoPedido(idPedido, nuevoEstado) {
-            try {
-                console.log(`📡 Intentando actualizar pedido ${idPedido} a estado: ${nuevoEstado}`);
+            
+                const campos = (typeof datos === 'string') ? { "Estado": datos } : datos;
+        
+                console.log(`📡 Sincronizando Pedido ${idPedido} con Airtable...`);
+                return await this.base(this.t.pedidos).update(idPedido, campos);
                 
-                return await this.base(this.t.pedidos).update(idPedido, {
-                    "Estado": nuevoEstado // ✨ Verifica que la columna se llame 'Estado'
-                });
             } catch (e) {
-                console.error("💥 Error en actualizarEstadoPedido:", e.message);
-                // Si sale error de "Unknown field", es que la columna no se llama 'Estado'
+                console.error("💥 Error en actualización:", e.message);
+                throw e;
             }
         }
-
-
-        async cambiarEstadoPedido(id, nuevoEstado) {
-            try {
-                return await this.base(this.t.pedidos).update([{ id, fields: { "Estado": nuevoEstado } }]);
-            } catch (e) { this._logError(e, 'cambiarEstadoPedido'); }
-        }
-
 
         async cancelarBorradorPedido(chatId) {
             try {

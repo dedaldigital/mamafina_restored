@@ -74,7 +74,7 @@ class OrderService {
     // 4. APLICAR CAMBIO: Actualiza Airtable y genera el link de aviso si está listo 
     async updateOrderStatus(idPedido, nuevoEstado) {
         try {
-            await airtableService.cambiarEstadoPedido(idPedido, nuevoEstado); 
+            await airtableService.actualizarEstadoPedido(idPedido, nuevoEstado);
             let aviso = { text: `✅ Estado actualizado a: *${nuevoEstado}*`, button: null };
 
             // Si el pedido está terminado, preparamos el botón de WhatsApp 
