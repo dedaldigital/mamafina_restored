@@ -442,7 +442,7 @@ module.exports = async function handler(req, res) {
                     
                     await enviarMensajeConBotones(chatId, `¡Hola! El taller está cerrado 😴. He dejado una nota y mañana te diremos algo. ✨`, [
                         [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
-                    ]);
+                    ]); 
                 }
                 return res.status(200).json({ ok: true }); // ✅ Cierre seguro
             }
