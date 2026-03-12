@@ -27,24 +27,29 @@ class OrderService {
             updates.Telefono = text;
             result.text = "📅 ¿Para qué **Fecha de entrega** es?";
         } else if (step.includes("fecha de entrega")) {
-       
+            updates.Fecha_Entrega = text; 
+            updates.Estado = "📥 Pendiente"; 
+
+            //Generamos el ticket
             const ticketNum = Date.now().toString().slice(-4); // Los 4 números
             const ticketId = `#REF-${ticketNum}`; // El código completo
 
+            // Limpiamos la sesión para que el borrador deje de estar activo
             updates.ID_Pedido_Unico = ticketId;
             updates.ID_Sesion = ""; 
 
+            //Preparamos la respuesta final
             result.text = `✅ *PEDIDO COMPLETADO*\n\n🎫 Código de seguimiento: **${ticketId}**`;
             result.isFinal = true;
 
             // 3. Pasamos los datos para el botón de WhatsApp del webhook
             result.ticketId = ticketId;
-            result.ticketNum = ticketNum; // ✨ Enviamos solo los números para WhatsApp
+            result.ticketNum = ticketNum; // 
            
              // Si el nombre se acaba de escribir en este paso, lo cogemos de updates, si no, del borrador
              result.clienteNombre = updates.Nombre_Cliente || borrador.fields.Nombre_Cliente;
              result.clienteTelefono = updates.Telefono || borrador.fields.Telefono;
-             
+
             // Si el nombre se acaba de escribir en este paso, lo cogemos de updates, si no, del borrador
             result.clienteNombre = updates.Nombre_Cliente || borrador.fields.Nombre_Cliente;
             result.clienteTelefono = updates.Telefono || borrador.fields.Telefono;
