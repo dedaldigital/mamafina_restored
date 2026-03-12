@@ -8,8 +8,7 @@ const taskService = require('../services/taskService');
 const inventoryService = require('../services/inventoryService');
 const orderService = require('../services/orderService');
 const escaparateService = require('../services/escaparateService');
-
-
+const academiaService = require('../services/academiaService'); // 
 // 🎒 LA MOCHILA (Fuera del handler)
 let cacheFotos = {};
 
@@ -641,18 +640,22 @@ module.exports = async function handler(req, res) {
 
             // BOTONES ACADEMIA 🫧 LIMPIO
 
-            // A. Menú Principal de Academia 🫧 LIMPIO
+            // Menú Principal de Academia 🫧 LIMPIO
             if (data === "CLI_ACADEMIA") {
-                const texto = `🎓 **BIENVENIDA A LA ACADEMIA**\n\n` +
-                              `¿Qué necesitas consultar hoy, primor?`;
-                
-                const botones = [
-                    [{ text: "📅 Ver Clases y Huecos", callback_data: "ACAD_VER_MENU_CLASES" }],
-                    [{ text: "📓 Mi Ficha de Alumna", callback_data: "ACAD_MI_FICHA" }],
-                    [{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]
-                ];
+                try {
+                    const texto = `🎓 **BIENVENIDA A LA ACADEMIA**\n\n` +
+                                  `Aquí puedes consultar tus clases o gestionar tu rincón de costura personal. ¿Qué necesitas, primor?`;
+                    
+                    const botones = [
+                        [{ text: "📅 Ver Clases y Huecos", callback_data: "ACAD_VER_MENU_CLASES" }],
+                        [{ text: "📓 Mi Ficha de Alumna", callback_data: "ACAD_MI_FICHA" }],
+                        [{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]
+                    ];
             
-                await editarMensajeConBotones(chatId, messageId, texto, botones);
+                    await editarMensajeConBotones(chatId, messageId, texto, botones);
+                } catch (e) {
+                    console.error("Error en CLI_ACADEMIA:", e);
+                }
                 await responderBoton(callback_query.id);
                 return res.status(200).json({ ok: true });
             }
@@ -681,23 +684,20 @@ module.exports = async function handler(req, res) {
                         }
                     }
             
-                // C. Mi ficha 🫧 LIMPIO
+                // C. Mi ficha 🫧 LIMPIO  
                 else if (data === "ACAD_MI_FICHA") {
-                    // Aquí usamos la lógica que ya tenías para leer la ficha de Airtable
-                    const ficha = await academiaService.obtenerOcrearFicha(chatId, user); 
+                    const texto = `📓 **ÁREA DE ALUMNAS**\n\n` +
+                                `Para abrir tu libreta de costura necesito saber quién eres:\n\n` +
+                                `🔍 **Tengo ID:** Si ya te hemos dado un número (ej: #ALU-1234).\n` +
+                                `✨ **Soy Nueva:** Si es la primera vez que entras aquí.`;
                     
-                    const mensajeStatus = `📓 **TU FICHA DE ALUMNA**\n\n` +
-                                        `👤 **Nombre:** ${ficha.Nombre_Real || '⚠️ Pendiente'}\n` +
-                                        `🧵 **Proyecto actual:** ${ficha.Proyecto_Actual || 'Sin anotar'}\n` +
-                                        `📍 **Notas:** ${ficha.Notas_Tecnicas || 'Sin notas'}\n`;
-
                     const botones = [
-                        [{ text: "👤 Gestionar mi nombre", callback_data: "MOD_NOMBRE" }],
-                        [{ text: "🧵 Actualizar mi labor", callback_data: "MENU_LABOR" }], // Este lleva a Notas y Patrón
+                        [{ text: "🔍 Ya tengo mi ID de Alumna", callback_data: "ACAD_BUSCAR_POR_ID" }],
+                        [{ text: "✨ Crear Ficha Nueva", callback_data: "ACAD_CREAR_NUEVA" }],
                         [{ text: "⬅️ Volver", callback_data: "CLI_ACADEMIA" }]
                     ];
 
-                    await editarMensajeConBotones(chatId, messageId, mensajeStatus, botones);
+                    await editarMensajeConBotones(chatId, messageId, texto, botones);
                     await responderBoton(callback_query.id);
                 }
 

@@ -36,27 +36,30 @@ class AcademiaService {
         return blocks;
     }
     
-    // HUECOS DISPONIBLES
-    async listarHuecos(tipo) {
-        const clases = await airtableService.base(process.env.AT_TABLE_CLASES).select({
-            filterByFormula: `AND({Tipo_Clase} = '${tipo}', {Huecos_Libres} > 0)`,
-            sort: [{ field: "Nombre_Clase", direction: "asc" }]
-        }).all();
-    
-        if (clases.length === 0) {
-            return { 
-                text: `Ay, cielo, ahora mismo no tenemos huecos libres en **${tipo}**, pero si quieres te apunto en la lista de espera para avisarte la primera.` 
-            };
+     // VER CLASES DISPONIBLES    
+     async obtenerClasesDisponibles(tipo) {
+        try {
+            // Buscamos en la tabla de Gestión de Clases
+      
+            const records = await this.base(process.env.AT_TABLE_CLASES).select({
+                filterByFormula: `AND({Tipo_Clase} = '${tipo}', {Huecos_Libres} > 0)`,
+                sort: [{ field: "Nombre_Clase", direction: "asc" }]
+            }).all();
+
+            return records.map(r => ({
+                id: r.id,
+                nombre: r.fields.Nombre_Clase,
+                huecos: r.fields.Huecos_Libres,
+                horario: r.fields.Horario || "Horario a consultar",
+                // Preparamos un texto bonito para mostrar en el mensaje
+                texto: `📍 **${r.fields.Nombre_Clase}**\n🪑 Huecos: ${r.fields.Huecos_Libres}\n⏰ ${r.fields.Horario || 'Consultar'}`
+            }));
+        } catch (e) {
+            console.error("💥 Error en obtenerClasesDisponibles:", e.message);
+            return [];
         }
-
-        const blocks = clases.map(c => ({
-            text: `📍 **${c.fields.Nombre_Clase}**\n🪑 Huecos: ${c.fields.Huecos_Libres}\n📝 ${c.fields.Notas || 'Sin notas adicionales.'}`,
-            buttons: [[{ text: "🙋 Me interesa este hueco", callback_data: `INT_CLASE|${c.id}|${tipo}` }]]
-        }));
-    
-        return { text: `Estos son los huecos para **${tipo}**:`, blocks };
-
     }
+ 
 
     // GESTIONAR HORARIO CLASES
 
@@ -103,33 +106,6 @@ class AcademiaService {
     }
 
 
-    // LISTAR ALUMNAS APUNTADAS (ADMIN)
-    async obtenerAlumnasDeClase(idClase) {
-        // 1. Obtenemos el nombre de la clase para filtrar
-        const clase = await airtableService.base(process.env.AT_TABLE_CLASES).find(idClase);
-        const nombreClase = clase.fields.Nombre_Clase;
-    
-        // 2. Buscamos en la tabla de Alumnas (TB-11) quién tiene esa clase asignada
-        const alumnas = await airtableService.base(process.env.AT_TABLE_ALUMNAS).select({
-            filterByFormula: `{Clase_Asignada} = '${nombreClase}'`
-        }).all();
-    
-        if (alumnas.length === 0) {
-            return { text: `No hay alumnas apuntadas en **${nombreClase}** todavía.`, blocks: [] };
-        }
-    
-        // 3. Creamos los bloques con el botón de expulsar ❌
-        const blocks = alumnas.map(alu => ({
-            text: `👤 **${alu.fields.Nombre_Real}** (${alu.fields.ID_Alumna_Unico})`,
-            buttons: [[{ 
-                text: "❌ Desapuntar", 
-                callback_data: `BORRAR_ALU|${idClase}|${alu.id}` 
-            }]]
-        }));
-    
-        return { text: `Alumnas en **${nombreClase}**:`, blocks };
-    }
-
     // GESTIONAR ALUMNAS APUNTADAS (ADMIN)
 
     async desapuntarAlumna(idClase, idAlumnaRecord) {
@@ -173,6 +149,24 @@ class AcademiaService {
         // Protocolo de IDs cortos para evitar límites [cite: 70]
         return `#ALU-${String(chatId).slice(-4)}`;
     }
+
+    //BUSCAR ALUMNA POR SU ID
+    async buscarAlumnaPorID(idUnico) {
+        try {
+            const records = await this.base(process.env.AT_TABLE_ALUMNAS).select({
+                filterByFormula: `{ID_Alumna_Unico} = '${idUnico}'`,
+                maxRecords: 1
+            }).firstPage();
+
+            if (records.length > 0) {
+                return { id: records[0].id, ...records[0].fields };
+            }
+            return null;
+        } catch (e) {
+            console.error("💥 Error en buscarAlumnaPorID:", e.message);
+            return null;
+        }
+    }   
 
     // OBTENER / CREAR FICHA
     async obtenerOcrearFicha(chatId, username) {
@@ -231,5 +225,29 @@ class AcademiaService {
             return result;
         }
     
+    // VER CLASES DISPONIBLES    
+    async obtenerClasesDisponibles(tipo) {
+        try {
+            // Buscamos en la tabla de Gestión de Clases
+      
+            const records = await this.base(process.env.AT_TABLE_CLASES).select({
+                filterByFormula: `AND({Tipo_Clase} = '${tipo}', {Huecos_Libres} > 0)`,
+                sort: [{ field: "Nombre_Clase", direction: "asc" }]
+            }).all();
+
+            return records.map(r => ({
+                id: r.id,
+                nombre: r.fields.Nombre_Clase,
+                huecos: r.fields.Huecos_Libres,
+                horario: r.fields.Horario || "Horario a consultar",
+                // Preparamos un texto bonito para mostrar en el mensaje
+                texto: `📍 **${r.fields.Nombre_Clase}**\n🪑 Huecos: ${r.fields.Huecos_Libres}\n⏰ ${r.fields.Horario || 'Consultar'}`
+            }));
+        } catch (e) {
+            console.error("💥 Error en obtenerClasesDisponibles:", e.message);
+            return [];
+        }
+    }
+
 }
 module.exports = new AcademiaService();
