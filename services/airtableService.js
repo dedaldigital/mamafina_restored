@@ -131,26 +131,32 @@ class AirtableService {
 
         async actualizarEstadoPedido(idPedido, datos) {
             try {
-                let campos = {};
+                let camposFinales = {};
         
-                // 1. Si 'datos' es un texto (ej: "📥 Pendiente"), creamos el objeto Estado
+                // 1. Si enviamos solo un texto (ej: "📥 Pendiente")
                 if (typeof datos === 'string') {
-                    campos = { "Estado": datos.trim() }; 
+                    camposFinales = { "Estado": datos.trim() };
                 } 
-                // 2. Si ya es un objeto (ej: { Pedido_Detalle: "..." }), lo usamos tal cual
+                // 2. Si enviamos el objeto de updates (ej: { Pedido_Detalle: "...", Estado: "..." })
                 else {
-                    campos = datos;
+                    camposFinales = { ...datos };
+                    // Si el objeto trae el campo Estado, le pasamos el plumero por si acaso
+                    if (camposFinales.Estado) {
+                        camposFinales.Estado = camposFinales.Estado.trim();
+                    }
                 }
         
-                console.log(`📡 Enviando a Airtable ID ${idPedido}:`, JSON.stringify(campos));
+                console.log(`📡 Intentando actualizar ID: ${idPedido}`);
+                console.log(`📦 Campos que enviamos:`, JSON.stringify(camposFinales));
         
-                // 3. Importante: Usamos la sintaxis de registro único (id, campos)
-                return await this.base(this.t.pedidos).update(idPedido, campos);
+                // 3. Sintaxis de actualización para un solo registro
+                return await this.base(this.t.pedidos).update(idPedido, camposFinales);
         
             } catch (e) {
-                console.error("💥 Error real de Airtable:", e.message);
-                // Esto nos dirá en el log qué valor exacto rechazó
-                throw e; 
+                // Imprimimos el error detallado para cazar al culpable en los logs
+                console.error("💥 ERROR DETALLADO DE AIRTABLE:", e.message);
+                console.error("📋 Detalles del fallo:", e.details || "Sin detalles extra");
+                throw e;
             }
         }
 

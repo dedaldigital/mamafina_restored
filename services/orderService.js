@@ -10,13 +10,10 @@ class OrderService {
 
     // 2. Gestiona el flujo de preguntas (Detalle -> Nombre -> Teléfono -> Fecha) 
     async handleOrderWorkflow(chatId, step, text, borradorId) {
-        // 1. IMPORTANTE: Recuperamos el borrador para tener los datos guardados en pasos anteriores
         const borrador = await airtableService.getPedidoPorId(borradorId);
-        
         const updates = {};
-        // 2. Inicializamos el objeto result para que siempre devuelva algo válido
         let result = { text: "", isFinal: false };
-    
+
         if (step.includes("producto o arreglo")) {
             updates.Pedido_Detalle = text;
             result.text = "📝 Anotado. ¿Cuál es el **Nombre del Cliente**?";
@@ -30,33 +27,32 @@ class OrderService {
             updates.Fecha_Entrega = text; 
             updates.Estado = "📥 Pendiente"; 
 
-            //Generamos el ticket
-            const ticketNum = Date.now().toString().slice(-4); // Los 4 números
-            const ticketId = `#REF-${ticketNum}`; // El código completo
+            const ticketNum = Date.now().toString().slice(-4); 
+            const ticketId = `#REF-${ticketNum}`; 
 
-            // Limpiamos la sesión para que el borrador deje de estar activo
             updates.ID_Pedido_Unico = ticketId;
             updates.ID_Sesion = ""; 
 
-            //Preparamos la respuesta final
             result.text = `✅ *PEDIDO COMPLETADO*\n\n🎫 Código de seguimiento: **${ticketId}**`;
             result.isFinal = true;
-
-            // 3. Pasamos los datos para el botón de WhatsApp del webhook
             result.ticketId = ticketId;
-            result.ticketNum = ticketNum; // 
-           
-             // Si el nombre se acaba de escribir en este paso, lo cogemos de updates, si no, del borrador
-             result.clienteNombre = updates.Nombre_Cliente || borrador.fields.Nombre_Cliente;
-             result.clienteTelefono = updates.Telefono || borrador.fields.Telefono;
-
-            // Si el nombre se acaba de escribir en este paso, lo cogemos de updates, si no, del borrador
+            result.ticketNum = ticketNum; 
+            
             result.clienteNombre = updates.Nombre_Cliente || borrador.fields.Nombre_Cliente;
             result.clienteTelefono = updates.Telefono || borrador.fields.Telefono;
         }
-    
-        // Guardamos los cambios en Airtable
-        await airtableService.actualizarEstadoPedido(borradorId, updates);
+
+        // ✨ GUARDADO ÚNICO: Lo sacamos fuera del IF para que sirva para TODOS los pasos
+        try {
+            console.log("🚀 Enviando actualización a Airtable...");
+            await airtableService.actualizarEstadoPedido(borradorId, updates);
+            console.log("✅ Airtable respondió OK");
+        } catch (error) {
+            console.error("❌ Airtable rechazó el guardado:", error.message);
+            result.text = "⚠️ ¡Ay, primor! No he podido anotar esto en Airtable. Error: " + error.message;
+            result.isFinal = false; 
+        }
+
         return result;
     }
 
