@@ -129,33 +129,15 @@ class AirtableService {
         }
 
 
-        async actualizarEstadoPedido(idPedido, datos) {
+        async actualizarEstadoPedido(idPedido, datos, tablaKey = 'pedidos') {
             try {
-                let camposFinales = {};
+                const tablaId = this.t[tablaKey]; 
+                let camposFinales = (typeof datos === 'string') ? { "Estado": datos.trim() } : { ...datos };
         
-                // 1. Si enviamos solo un texto (ej: "📥 Pendiente")
-                if (typeof datos === 'string') {
-                    camposFinales = { "Estado": datos.trim() };
-                } 
-                // 2. Si enviamos el objeto de updates (ej: { Pedido_Detalle: "...", Estado: "..." })
-                else {
-                    camposFinales = { ...datos };
-                    // Si el objeto trae el campo Estado, le pasamos el plumero por si acaso
-                    if (camposFinales.Estado) {
-                        camposFinales.Estado = camposFinales.Estado.trim();
-                    }
-                }
-        
-                console.log(`📡 Intentando actualizar ID: ${idPedido}`);
-                console.log(`📦 Campos que enviamos:`, JSON.stringify(camposFinales));
-        
-                // 3. Sintaxis de actualización para un solo registro
-                return await this.base(this.t.pedidos).update(idPedido, camposFinales);
-        
+                console.log(`📡 Enviando a tabla [${tablaId}] ID: ${idPedido}`);
+                return await this.base(tablaId).update(idPedido, camposFinales);
             } catch (e) {
-                // Imprimimos el error detallado para cazar al culpable en los logs
-                console.error("💥 ERROR DETALLADO DE AIRTABLE:", e.message);
-                console.error("📋 Detalles del fallo:", e.details || "Sin detalles extra");
+                console.error("💥 ERROR AIRTABLE:", e.message);
                 throw e;
             }
         }
