@@ -373,8 +373,7 @@ module.exports = async function handler(req, res) {
             else if (data === "CLI_INTERESADO") {
                 const abierta = escaparateService.estaLaTiendaAbierta();
                 if (abierta) {
-                    const linkWA = await formatearLinkWA("636796210", "Reyes y Begoña", "¡Hola! No he podido contactar por llamada...");
-                    await enviarMensajeConBotones(chatId, "¡Estamos en el taller! 🧵\n\nPuedes pasarte, hablarnos por WhatsApp o llamarnos directamente pulsando aquí:\n👉 +34636796210", [                        //[{ text: "¡Estamos en el taller! 🧵 Si quieres llámanos ahora 📞", url: linkLlamada }],
+                const linkWA = await formatearLinkWA("636796210", result.meta.nombreCliente, mensajeWA);                    await enviarMensajeConBotones(chatId, "¡Estamos en el taller! 🧵\n\nPuedes pasarte, hablarnos por WhatsApp o llamarnos directamente pulsando aquí:\n👉 +34636796210", [                        //[{ text: "¡Estamos en el taller! 🧵 Si quieres llámanos ahora 📞", url: linkLlamada }],
                         [{ text: "📲 WhatsApp", url: linkWA }],
                         [{ text: "🏠 Menú", callback_data: "CLI_INICIO" }]
                     ]);
@@ -452,8 +451,7 @@ module.exports = async function handler(req, res) {
 
                     // 2. Preparamos el mensaje de WhatsApp (Separado por línea nueva)
                     const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
-                    const linkWA = await escaparateService.formatearLinkWA("636796210", nombreCliente, mensajeWA);
-                    
+                    const linkWA = await formatearLinkWA("636796210", nombreCliente, mensajeWA);                    
                     // 3. Enviamos los botones
                     await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras:", [
                         [{ text: "📲 Hablar por WhatsApp", url: linkWA }],
@@ -895,12 +893,8 @@ module.exports = async function handler(req, res) {
                     // ✨ Usamos result.ticketNum para que en el WhatsApp solo salgan los números
                     const mensajeWA = `¡Hola ${result.clienteNombre}! ✨ Tu pedido en Mamafina ya está anotado. Tu código es: ${result.ticketNum}. Úsalo aquí mismo para ver cómo va tu encargo. 🧵`;
                     
-                    const linkWA = await escaparateService.formatearLinkWA(
-                        result.clienteTelefono, 
-                        result.clienteNombre, 
-                        mensajeWA
-                    );
-                
+                    const linkWA = await formatearLinkWA(result.clienteTelefono, result.clienteNombre, mensajeWA);
+                    
                     await enviarMensajeConBotones(chatId, result.text, [
                         [{ text: "📲 Enviar Ticket por WhatsApp", url: linkWA }]
                     ]);

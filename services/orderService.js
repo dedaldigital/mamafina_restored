@@ -101,7 +101,7 @@ class OrderService {
                 // Si r.fields.Consulta no existe en Airtable, saldrá undefined
                 const nombre = r.fields.Nombre_Cliente || "Desconocido";
                 const duda = r.fields.Consulta || "Sin mensaje"; // ✨ 
-            
+                const tel = r.fields.Telefono || "Sin teléfono"
                 return {
                     text: `👤 **CLIENTE:** ${nombre}\n💬 **DUDA:** ${duda}\n📱 **TEL:** ${tel}`,
                     buttons: [
