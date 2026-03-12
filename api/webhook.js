@@ -395,66 +395,58 @@ module.exports = async function handler(req, res) {
 
           
              // Interés en un pedido específico 🫧 LIMPIO
-             else if (data.startsWith("INT_PEDIDO_")) {
+            
+            else if (data.startsWith("INT_PEDIDO_")) {
                 const idPedidoRaw = data.replace("INT_PEDIDO_", "").trim();
-                console.log("🔍 Intentando recuperar pedido con ID/Ticket:", idPedidoRaw);
-            
-                let pedidoData = null;
-                
+                let idAirtableReal = null;
+
                 try {
-                    const registro = await airtableService.base(airtableService.t.pedidos).find(idPedidoRaw);
-                    if (registro) {
-                        pedidoData = { id: registro.id, fields: registro.fields };
-                    }
-                } catch (error) {
-                    console.log("⚠️ Falló find(), buscando por campo...");
-                }
-
-                // Si no se encontró directo, usamos el ticket #REF y OBTENEMOS SU REGISTRO COMPLETO
-                if (!pedidoData) {
-                    const fallback = await escaparateService.buscarPedidoPorTicket(idPedidoRaw, airtableService);
-                    if (fallback && fallback.id) {
-                        const registroFallback = await airtableService.base(airtableService.t.pedidos).find(fallback.id);
-                        if (registroFallback) {
-                            pedidoData = { id: registroFallback.id, fields: registroFallback.fields };
-                        }
-                    }
-                }
-            
-                if (!pedidoData || !pedidoData.fields) {
-                    console.log("❌ Pedido no encontrado en ningún formato.");
-                    await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles. Por favor, vuelve a buscar tu pedido con el código #REF.");
-                    return res.status(200).json({ ok: true });
-                }
-                
-                const p = pedidoData.fields;
-                const detallePedido = p.Pedido_Detalle || "mi encargo";
-                const nombreCliente = p.Nombre_Cliente || user;
-                const abierta = escaparateService.estaLaTiendaAbierta();
-                
-                if (abierta) {
-                    try {
-                        
-                        await airtableService.actualizarEstadoPedido(pedidoData.id, { "Estado": "🙋Cliente Interesado" });
-                        console.log("✅ Estado actualizado en Airtable: Cliente Interesado");
-                    } catch (err) {
-                        console.log("⚠️ Error al actualizar estado:", err.message);
+                    // 1. PRIMERO: Aseguramos tener el ID interno de Airtable (el que empieza por 'rec')
+                    if (idPedidoRaw.startsWith('rec')) {
+                        idAirtableReal = idPedidoRaw;
+                    } else {
+                        // Si es un ticket #REF, le pedimos al servicio que nos dé el ID real
+                        const busqueda = await escaparateService.buscarPedidoPorTicket(idPedidoRaw, airtableService);
+                        if (busqueda && busqueda.id) idAirtableReal = busqueda.id;
                     }
 
-                    const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
-                    const linkWA = await formatearLinkWA("636796210", nombreCliente, mensajeWA);                    
+                    if (!idAirtableReal) {
+                        await enviarMensajeSimple(chatId, "⚠️ No encuentro el pedido para actualizarlo.");
+                        return res.status(200).json({ ok: true });
+                    }
+
+                    // 2. SEGUNDO: Forzamos la actualización antes de cualquier otra cosa
+                    // Importante: El nombre del campo debe ser "Estado" exactamente
+                    await airtableService.actualizarEstadoPedido(idAirtableReal, { "Estado": "🙋Cliente Interesado" });
+                    console.log("✅ Airtable actualizado con éxito para ID:", idAirtableReal);
+
+                    // 3. TERCERO: Recuperamos los datos para el mensaje de WhatsApp
+                    const registroActualizado = await airtableService.base(airtableService.t.pedidos).find(idAirtableReal);
+                    const p = registroActualizado.fields;
                     
-                    await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras:", [
-                        [{ text: "📲 Hablar por WhatsApp", url: linkWA }],
-                        [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
-                    ]);
-                } else {
-                    await airtableService.registrarConsultaAutomatica(chatId, user, nombreCliente, p.Telefono || "", `Duda pedido: ${detallePedido}`);
-                    await enviarMensajeConBotones(chatId, `¡Hola! El taller está cerrado 😴. He dejado una nota y mañana te diremos algo. ✨`, [[{ text: "🏠 Menú", callback_data: "CLI_INICIO" }]]);
+                    const nombreCliente = p.Nombre_Cliente || user;
+                    const detallePedido = p.Pedido_Detalle || "mi encargo";
+                    const abierta = escaparateService.estaLaTiendaAbierta();
+
+                    if (abierta) {
+                        const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
+                        const linkWA = await formatearLinkWA("636796210", nombreCliente, mensajeWA);                    
+                        
+                        await enviarMensajeConBotones(chatId, "✅ ¡Hecho! El estado se ha actualizado. Pulsa aquí para hablarnos:", [
+                            [{ text: "📲 Hablar por WhatsApp", url: linkWA }],
+                            [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
+                        ]);
+                    } else {
+                        // Si está cerrado, registramos la consulta en la otra tabla
+                        await airtableService.registrarConsultaAutomatica(chatId, user, nombreCliente, p.Telefono || "", `Duda pedido: ${detallePedido}`);
+                        await enviarMensajeConBotones(chatId, `¡Hola! El taller está cerrado 😴. Ya he marcado que tienes interés y mañana te diremos algo.`, [[{ text: "🏠 Menú", callback_data: "CLI_INICIO" }]]);
+                    }
+                } catch (e) {
+                    console.error("💥 ERROR CRÍTICO ACTUALIZANDO ESTADO:", e.message);
+                    await enviarMensajeSimple(chatId, "❌ No he podido marcar el interés en la ficha. Avisa al administrador.");
                 }
                 return res.status(200).json({ ok: true });
             }
-
             // VOLVER AL INICIO 🫧 LIMPIO
             else if (data === "CLI_INICIO") {
                 // CAMBIO AQUÍ: Añadir el prefijo escaparateService.
