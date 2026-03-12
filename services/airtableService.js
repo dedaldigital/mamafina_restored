@@ -493,14 +493,6 @@ class AirtableService {
         } catch (e) { return null; }
     }
     
-    // NUEVA FUNCIÓN: Actualiza el estado de un pedido específico
-    async actualizarEstadoPedido(idPedido, nuevoEstado) {
-        try {
-            return await this.base(this.t.pedidos).update(idPedido, {
-                "Estado": nuevoEstado
-            });
-        } catch (e) { console.error("Error actualizando pedido:", e); }
-    }
 
     async obtenerCatalogoPublico() {
         try {
