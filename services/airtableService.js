@@ -129,6 +129,13 @@ class AirtableService {
         }
 
 
+        async actualizarPedido(id, campos) {
+            try {
+                // ✨ CORRECCIÓN: Simplificamos la sintaxis para un solo registro
+                return await this.base(this.t.pedidos).update(id, campos);
+            } catch (e) { this._logError(e, 'actualizarPedido'); }
+        }
+
         async actualizarEstadoPedido(idPedido, nuevoEstado) {
             try {
                 console.log(`📡 Intentando actualizar pedido ${idPedido} a estado: ${nuevoEstado}`);
@@ -141,6 +148,7 @@ class AirtableService {
                 // Si sale error de "Unknown field", es que la columna no se llama 'Estado'
             }
         }
+
 
         async cambiarEstadoPedido(id, nuevoEstado) {
             try {
