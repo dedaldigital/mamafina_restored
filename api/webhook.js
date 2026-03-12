@@ -930,8 +930,7 @@ module.exports = async function handler(req, res) {
                         const abierta = escaparateService.estaLaTiendaAbierta();
                         if (abierta) {
                             const mensajeWA = `¡Hola! Soy ${result.meta.nombreCliente}. Os escribo por la consulta: "${result.meta.mensajeConsulta}"`;
-                            const linkWA = await escaparateService.formatearLinkWA("636796210", result.meta.nombreCliente, mensajeWA);
-                            await enviarMensajeConBotones(chatId, `✅ ¡Hecho! Ya podéis hablar por aquí:`, [
+                            const linkWA = await formatearLinkWA(p.Telefono, nombreCliente, mensajeWA);                            await enviarMensajeConBotones(chatId, `✅ ¡Hecho! Ya podéis hablar por aquí:`, [
                                 [{ text: "📲 WhatsApp Directo", url: linkWA }],
                                 [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
                             ]);
