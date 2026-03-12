@@ -107,7 +107,7 @@ async formatearLinkWA(telefono, nombre, mensajeBase, ticketId = "") {
     let telLimpio = String(telefono).replace(/[^0-9]/g, ''); 
     if (telLimpio.length === 9) telLimpio = '34' + telLimpio; 
     
-    // ✨ MEJORA: Reemplazamos tanto el nombre como la referencia si existen en la plantilla
+    // Reemplazamos tanto el nombre como la referencia si existen en la plantilla
     let textoFinal = mensajeBase
         .replace('{nombre}', nombre || 'cliente')
         .replace('{ticket}', ticketId || ''); // Inyectamos el #REF aquí

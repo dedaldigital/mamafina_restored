@@ -349,7 +349,6 @@ module.exports = async function handler(req, res) {
             }
 
             // El ejecutor para cerrar la consulta 
-          
             else if (data.includes("CERRAR_CONSULTA")) {
                 await responderBoton(callback_query.id);
                 
@@ -395,38 +394,36 @@ module.exports = async function handler(req, res) {
             }
 
              // Interés en un pedido específico 🫧 LIMPIO
-            
-             else if (data.startsWith("INT_PEDIDO_")) {
+            else if (data.startsWith("INT_PEDIDO_")) {
                 const idPedido = data.replace("INT_PEDIDO_", "");
                 const abierta = escaparateService.estaLaTiendaAbierta();
                 
-                // 1. Obtenemos el registro completo de Airtable
+                // ✨ Definimos 'user' para que no de error en la consulta automática
+                const user = callback_query.from.first_name || "Cliente";
+                const chatId = callback_query.message.chat.id;
+
                 const pedidoData = await airtableService.obtenerPedidoPorId(idPedido);
 
                 if (!pedidoData || !pedidoData.fields) {
-                    await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles de ese encargo en mi libreta.");
+                    await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles de ese encargo.");
                     return res.status(200).json({ ok: true });
                 }
 
-                // 2. EXTRAEMOS LOS DATOS CORRECTAMENTE (Desde .fields)
                 const detallePedido = pedidoData.fields.Pedido_Detalle || "mi encargo";
-                const nombreCliente = pedidoData.fields.Nombre_Cliente || "Cliente";
+                const nombreCliente = pedidoData.fields.Nombre_Cliente || user;
 
                 if (abierta) {
-                    // Marcamos en Airtable que el cliente ha preguntado
                     await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
-                    
-                    // 3. GENERAMOS EL LINK (Usando el servicio y solo texto)
                     const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
                     const linkWA = await escaparateService.formatearLinkWA("636796210", nombreCliente, mensajeWA);
                     
-                    await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras directamente:", [
+                    await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras:", [
                         [{ text: "📲 Hablar por WhatsApp", url: linkWA }],
                         [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
                     ]);
                 } else {
-                    // TALLER CERRADO: Registro automático de consulta
                     await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
+                    // ✨ Ahora 'user' ya está definido y no fallará
                     await airtableService.registrarConsultaAutomatica(
                         chatId, 
                         user, 
@@ -435,11 +432,11 @@ module.exports = async function handler(req, res) {
                         `Consulta sobre: ${detallePedido}`
                     );
                     
-                    await enviarMensajeConBotones(chatId, `¡Hola! Ahora mismo el taller está cerrado 😴. He dejado una nota en tu ficha y mañana mismo Reyes o Begoña te dirán algo. ✨`, [
+                    await enviarMensajeConBotones(chatId, `¡Hola! El taller está cerrado 😴. He dejado una nota y mañana te diremos algo. ✨`, [
                         [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
                     ]);
                 }
-                return res.status(200).json({ ok: true });
+                return res.status(200).json({ ok: true }); // ✅ Cierre seguro
             }
 
             // VOLVER AL INICIO 🫧 LIMPIO
