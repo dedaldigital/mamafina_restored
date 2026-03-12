@@ -829,7 +829,10 @@ module.exports = async function handler(req, res) {
             const esRespuesta = !!message.reply_to_message;
             //Definimos también aquí replyText
             const replyText = esRespuesta ? message.reply_to_message.text : "";
-            
+            //Extraemos metadata y DEFINIMOS 'paso' para todo el mundo ✨
+            const metadata = extraerMetadata(replyText);
+            const paso = metadata ? metadata.step : null; // <--- Definición global
+
             // COMANDO GLOBAL DE CANCELACIÓN PARA TODO EL MUNDO
             if (textoMinus === "cancelar") {
                 try { await airtableService.cancelarBorradorPedido(chatId); } catch (e) {}
@@ -886,8 +889,6 @@ module.exports = async function handler(req, res) {
             }
 
             // FLUJOS BASADOS EN METADATOS (Caja 1, 2 y 3)
-            const metadata = extraerMetadata(replyText);
-
             if (metadata && metadata.step) {
                 const paso = metadata.step; // DECLARACIÓN ÚNICA
 
