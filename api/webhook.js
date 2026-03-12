@@ -643,35 +643,74 @@ module.exports = async function handler(req, res) {
 
             // A. Menú Principal de Academia 🫧 LIMPIO
             if (data === "CLI_ACADEMIA") {
-                const botones = [
-                    [{ text: "📝 Actualizar mi Labor", callback_data: "ACAD_UPDATE_LABOR" }],
-                    [{ text: "📝 Gestionar mi Ficha", callback_data: "ACAD_GESTION_FICHA" }],                    [{ text: "📅 Ver Clases y Huecos", callback_data: "ACAD_VER_CLASES" }], // Añadido para consistencia
-                    [{ text: "🧶 Grupo Clases Crochet", url: "https://chat.whatsapp.com/C5ZLwuNwAMWCh4MGZBI7RY" }],
-                    [{ text: "📂 Gestionar Patrón", callback_data: "MENU_PATRON" }],
-                    [{ text: "🏠 Volver al Inicio", callback_data: "CLI_INICIO" }]
-                ];
+                const texto = `🎓 **BIENVENIDA A LA ACADEMIA**\n\n` +
+                              `¿Qué necesitas consultar hoy, primor?`;
                 
-                await editarMensajeConBotones(chatId, messageId, 
-                    "¡Qué alegría verte por aquí, primor! ✨ ¿Quieres mirar tus notas de costura, actualizar tu labor o unirte a nuestros grupos?", 
-                    botones);
+                const botones = [
+                    [{ text: "📅 Ver Clases y Huecos", callback_data: "ACAD_VER_MENU_CLASES" }],
+                    [{ text: "📓 Mi Ficha de Alumna", callback_data: "ACAD_MI_FICHA" }],
+                    [{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]
+                ];
+            
+                await editarMensajeConBotones(chatId, messageId, texto, botones);
+                await responderBoton(callback_query.id);
                 return res.status(200).json({ ok: true });
             }
 
             // A. Mostrar categorías 🫧 LIMPIO
-            if (data === "ACAD_VER_CLASES") {
-                const menu = await academiaService.mostrarMenuClases(chatId);
-                await editarMensajeConBotones(chatId, callback_query.message.message_id, menu.text, menu.buttons);
+
+            else if (data === "ACAD_VER_MENU_CLASES") {
+                const botones = [
+                    [{ text: "🧵 Clases de Costura (Individual)", callback_data: "ACAD_VER_CLASES|Costura" }],
+                    [{ text: "🧶 Clases de Crochet (Grupal)", callback_data: "ACAD_VER_CLASES|Crochet" }],
+                    [{ text: "💬 Grupo WhatsApp Crochet", url: "https://chat.whatsapp.com/TU_LINK_AQUI" }],
+                    [{ text: "⬅️ Volver", callback_data: "CLI_ACADEMIA" }]
+                ];
+                await editarMensajeConBotones(chatId, messageId, "Elige el tipo de clase para ver los huecos libres:", botones);
+                await responderBoton(callback_query.id);
             }
 
-            // B. Mostrar huecos según tipo 🫧 LIMPIO
-            else if (data.startsWith("VER_CLASES|")) {
-                const tipo = data.split('|')[1];
-                const lista = await academiaService.listarHuecos(tipo);
-                await enviarMensajeSimple(chatId, lista.text);
-                if (lista.blocks) {
-                    for (const block of lista.blocks) {
-                        await enviarMensajeConBotones(chatId, block.text, block.buttons);
+                // B. Mostrar huecos según tipo 🫧 LIMPIO
+                else if (data.startsWith("VER_CLASES|")) {
+                    const tipo = data.split('|')[1];
+                    const lista = await academiaService.listarHuecos(tipo);
+                    await enviarMensajeSimple(chatId, lista.text);
+                    if (lista.blocks) {
+                        for (const block of lista.blocks) {
+                            await enviarMensajeConBotones(chatId, block.text, block.buttons);
+                        }
                     }
+            
+                // C. Mi ficha 🫧 LIMPIO
+                else if (data === "ACAD_MI_FICHA") {
+                    // Aquí usamos la lógica que ya tenías para leer la ficha de Airtable
+                    const ficha = await academiaService.obtenerOcrearFicha(chatId, user); 
+                    
+                    const mensajeStatus = `📓 **TU FICHA DE ALUMNA**\n\n` +
+                                        `👤 **Nombre:** ${ficha.Nombre_Real || '⚠️ Pendiente'}\n` +
+                                        `🧵 **Proyecto actual:** ${ficha.Proyecto_Actual || 'Sin anotar'}\n` +
+                                        `📍 **Notas:** ${ficha.Notas_Tecnicas || 'Sin notas'}\n`;
+
+                    const botones = [
+                        [{ text: "👤 Gestionar mi nombre", callback_data: "MOD_NOMBRE" }],
+                        [{ text: "🧵 Actualizar mi labor", callback_data: "MENU_LABOR" }], // Este lleva a Notas y Patrón
+                        [{ text: "⬅️ Volver", callback_data: "CLI_ACADEMIA" }]
+                    ];
+
+                    await editarMensajeConBotones(chatId, messageId, mensajeStatus, botones);
+                    await responderBoton(callback_query.id);
+                }
+
+                 // --- SUBMENÚ: ACTUALIZAR LABOR ---
+                else if (data === "MENU_LABOR") {
+                    const botonesLabor = [
+                        [{ text: "📝 Cambiar nombre del proyecto", callback_data: "MOD_PROYECTO" }],
+                        [{ text: "📍 Apuntar notas técnicas", callback_data: "MOD_NOTAS" }],
+                        [{ text: "📂 Gestionar patrón", callback_data: "MENU_PATRON" }],
+                        [{ text: "⬅️ Volver a mi ficha", callback_data: "ACAD_MI_FICHA" }]
+                    ];
+
+                    await editarMensajeConBotones(chatId, messageId, "🧵 **GESTIÓN DE LABOR**\n¿Qué detalle quieres anotar en tu proyecto hoy?", botonesLabor);
                 }
             }
 
