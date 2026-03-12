@@ -77,10 +77,13 @@ class OrderService {
             if (nuevoEstado === "✅ Terminado") {
                 const ped = await airtableService.getPedidoPorId(idPedido); 
                 // Usamos la función de formateo (asumiendo que está disponible o la movemos a un util)
-                const link = `https://wa.me/${String(ped.fields.Telefono).replace(/[^0-9]/g, '')}?text=¡Hola! Tu pedido está listo. ✨`;
-                
-                aviso.extraMsg = `🎊 ¡Avisar a ${ped.fields.Nombre_Cliente}!`;
-                aviso.button = [[{ text: "📲 WhatsApp", url: link }]];
+                let telLimpio = tel ? String(tel).replace(/[^0-9]/g, '') : "";
+                if (telLimpio.length === 9 && /^[67]/.test(telLimpio)) {
+                    telLimpio = '34' + telLimpio;
+                }
+                // 2. Creación del mensaje pre-rellenado
+                const mensajeRespuesta = `¡Hola ${nombre}! ✨ Tu pedido está listo. ¡Estoy deseando que lo veas!`;
+                const urlWA = telLimpio ? `https://wa.me/${telLimpio}?text=${encodeURIComponent(mensajeRespuesta)}` : null;
             }
             return aviso;
         } catch (e) {

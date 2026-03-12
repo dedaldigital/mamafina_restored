@@ -93,7 +93,7 @@ class AirtableService {
 
                 return await this.base(this.t.pedidos).select({
 
-                    filterByFormula: "OR({Estado} = '📥 Pendiente', {Estado} = '🧵 En curso', {Estado} = '✅ Terminado')",
+                    filterByFormula: "OR({Estado} = '📥 Pendiente', {Estado} = '🧵 En curso', {Estado} = '✅ Terminado', {Estado} = '🙋Cliente Interesado')",
                     
                     sort: [{field: "Fecha_Entrega", direction: "asc"}]
                 }).all();
