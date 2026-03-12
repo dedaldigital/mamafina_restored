@@ -821,9 +821,16 @@ module.exports = async function handler(req, res) {
         if (message && message.text) {
             const textoRecibido = message.text;
             const textoMinus = textoRecibido.toLowerCase();
-            const esRespuesta = !!message.reply_to_message;
-            
+           
+           
             // 🌍 PROCESOS GLOBALES (Admin y Cliente) 🫧 LIMPIO
+
+            //Definimos variables base 
+            const esRespuesta = !!message.reply_to_message;
+            //Definimos también aquí replyText
+            const replyText = esRespuesta ? message.reply_to_message.text : "";
+
+            
             // COMANDO GLOBAL DE CANCELACIÓN PARA TODO EL MUNDO
             if (textoMinus === "cancelar") {
                 try { await airtableService.cancelarBorradorPedido(chatId); } catch (e) {}
@@ -1410,9 +1417,6 @@ module.exports = async function handler(req, res) {
             } //CIERRE FLUJO DE CLIENTES
             
          }//CIERRE FLUJO DE TEXTO 
-
-
-
 
     } //CIERRE FLUJO DE TEXTO//CERRAMOS TRY
 
