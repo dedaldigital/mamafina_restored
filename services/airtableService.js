@@ -2,10 +2,12 @@ const Airtable = require('airtable');
 
 class AirtableService {
     constructor() {
+        // Inicializamos la base
+        this.base = new Airtable({ 
+            apiKey: process.env.AIRTABLE_PAT 
+        }).base(process.env.AIRTABLE_BASE_ID);
 
-        this.base = new Airtable({ apiKey: process.env.AIRTABLE_PAT }).base(process.env.AIRTABLE_BASE_ID);
-
-
+        // Mapeo de tablas
         this.t = {
             telas: process.env.AT_TABLE_TELAS,           
             productos: process.env.AT_TABLE_PRODUCTOS,   
@@ -16,9 +18,8 @@ class AirtableService {
             config: process.env.AT_TABLE_CONFIG,         
             registros: process.env.AT_TABLE_REGISTROS,
             consultas: process.env.AT_TABLE_CONSULTAS || 'Consultas',
-            academia: process.env.AT_TABLE_ALUMNNAS,
-            clases: process.env.AT_TABLE_CLASES
- 
+            academia: process.env.AT_TABLE_ALUMNAS, // Arreglado: ALUMNAS
+            clases: process.env.AT_TABLE_CLASES || 'Gestion_Clases'
         };
     }
 
