@@ -104,8 +104,7 @@ class OrderService {
             const blocks = consultas.map(r => {
                 // Si r.fields.Consulta no existe en Airtable, saldrá undefined
                 const nombre = r.fields.Nombre_Cliente || "Desconocido";
-                const duda = r.fields.Consulta || "Sin mensaje"; // ✨ Cambia 'Mensaje' por 'Consulta'
-                const tel = r.fields.Telefono || "";
+                const duda = r.fields.Consulta || "Sin mensaje"; // ✨ 
             
                 return {
                     text: `👤 **CLIENTE:** ${nombre}\n💬 **DUDA:** ${duda}\n📱 **TEL:** ${tel}`,

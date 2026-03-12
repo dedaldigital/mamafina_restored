@@ -504,14 +504,18 @@ class AirtableService {
     }
 
     async guardarConsultaFinal(metadata) {
-        return await this.base(this.t.consultas).create([{
-            fields: {
-                "Nombre_Cliente": metadata.nombreCliente,
-                "Telefono": metadata.telefono,
-                "Consulta": metadata.Consulta, // ✨ Aquí es donde se guarda el mensaje
-                "Estado": "Pendiente"
-            }
-        }]);
+        try {
+            return await this.base(this.t.consultas).create([{
+                fields: {
+                    "Nombre_Cliente": metadata.nombreCliente || "Sin nombre",
+                    "Telefono": metadata.telefono || "Sin teléfono",
+                    "Consulta": metadata.mensajeConsulta || "Sin mensaje", // ✨ Usa el nombre exacto de tu webhook
+                    "Estado": "Pendiente"
+                }
+            }]);
+        } catch (e) {
+            console.error("💥 Error al guardar en Airtable:", e.message);
+        }
     }
     
     async registrarNuevaConsulta(chatId, usuario, tipo) {

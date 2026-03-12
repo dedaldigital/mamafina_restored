@@ -124,10 +124,10 @@ async handleConsultationWorkflow(textoRecibido, metadata) {
     let result = { text: "", step: "", isFinal: false, meta: metadata };
 
     if (metadata.step === "ESP_CONSULTA") {
-        result.meta.mensajeConsulta = textoRecibido;
+        result.meta.mensajeConsulta = textoRecibido; 
         result.meta.step = "ESP_NOMBRE";
         result.text = `📝 Anotado. ¿A nombre de quién pongo la consulta, primor?`;
-    } 
+    }
     else if (metadata.step === "ESP_NOMBRE") {
         result.meta.nombreCliente = textoRecibido;
         result.meta.step = "ESP_TELEFONO";
