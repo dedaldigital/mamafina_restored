@@ -827,13 +827,15 @@ module.exports = async function handler(req, res) {
 
             //Definimos variables base 
             const esRespuesta = !!message.reply_to_message;
+
             //Definimos también aquí replyText
             const replyText = esRespuesta ? message.reply_to_message.text : "";
-            //Extraemos metadata y DEFINIMOS 'paso' para todo el mundo ✨
+
+            //Extraemos metadata y DEFINIMOS 'paso' para todo el mundo 
             const metadata = extraerMetadata(replyText);
             const paso = metadata ? metadata.step : null; // <--- Definición global
 
-            // COMANDO GLOBAL DE CANCELACIÓN PARA TODO EL MUNDO
+            // COMANDO GLOBAL DE CANCELACIÓN PARA TODO EL MUNDO 🫧 LIMPIO
             if (textoMinus === "cancelar") {
                 try { await airtableService.cancelarBorradorPedido(chatId); } catch (e) {}
                 await enviarMensajeSimple(chatId, "❌ Operación cancelada.");
@@ -1287,31 +1289,42 @@ module.exports = async function handler(req, res) {
 
             else { 
 
-
-                const textoRecibido = message.text || "";
-                const textoMinus = textoRecibido.toLowerCase();
-                const replyText = message.reply_to_message ? message.reply_to_message.text : "";
+                  // 1. SALUDO PRINCIPAL (Es lo primero que miramos para el cliente)
+                  if (textoMinus === "/start" || textoMinus === "hola" || textoMinus === "menú") {
+                    const botones = escaparateService.obtenerBotonesMenuPrincipal(); 
+                    const bienvenida = "¡Hola, primor! ✨ Soy Mamassistant, tu costurera digital. ¿En qué puedo ayudarte hoy?";
+                    
+                    await enviarMensajeConBotones(chatId, bienvenida, botones);
+                    return res.status(200).json({ ok: true }); 
+                }
             
                 // 0. Interceptor de Metadata (Flujo Consulta: Mensaje -> Nombre -> Teléfono)
                 const metadata = extraerMetadata(replyText); 
 
-                if (metadata && metadata.step) {
+                  
+                // 2. INTERCEPTOR DE METADATA (Pasos de la consulta) 🫧 LIMPIO
+
+                // Usamos 'paso' que ya definimos arriba (en la parte global) como metadata.step
+                if (paso) {
+
                     // PASO 1: RECIBIMOS LA CONSULTA -> PEDIMOS NOMBRE
-                    if (metadata.step === "ESP_CONSULTA") {
+                    if (paso === "ESP_CONSULTA") {
                         metadata.mensajeConsulta = textoRecibido;
                         metadata.step = "ESP_NOMBRE";
                         await enviarMensajeConReply(chatId, `📝 Anotado. ¿A nombre de quién pongo la consulta, primor?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
                         return res.status(200).json({ ok: true });
                     }
+                    
                     // PASO 2: RECIBIMOS NOMBRE -> PEDIMOS TELÉFONO
-                    else if (metadata.step === "ESP_NOMBRE") {
+                    else if (paso === "ESP_NOMBRE") {
                         metadata.nombreCliente = textoRecibido;
                         metadata.step = "ESP_TELEFONO";
                         await enviarMensajeConReply(chatId, `🏷️ Muy bien, **${textoRecibido}**. \n¿A qué número de **Teléfono** podemos contactarte?\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
                         return res.status(200).json({ ok: true });
                     }
+                    
                     // PASO 3: RECIBIMOS TELÉFONO -> GUARDADO FINAL
-                    else if (metadata.step === "ESP_TELEFONO") {
+                    else if (paso === "ESP_TELEFONO") {
                         metadata.telefonoCliente = textoRecibido;
                         const abierta = escaparateService.estaLaTiendaAbierta();
                         metadata.estado = abierta ? "WhatsApp Abierto" : "Pendiente";
@@ -1320,7 +1333,14 @@ module.exports = async function handler(req, res) {
                         await airtableService.guardarConsultaFinal(metadata);
 
                         if (abierta) {
-                            const linkWA = await formatearLinkWA("636796210", metadata.nombreCliente, `¡Hola! Soy ${metadata.nombreCliente}. Os escribo por la consulta: "${metadata.mensajeConsulta}"`);
+
+                            // Usamos el servicio escaparateService
+                            const linkWA = await escaparateService.formatearLinkWA(
+                                "636796210", 
+                                metadata.nombreCliente, 
+                                `¡Hola! Soy ${metadata.nombreCliente}. Os escribo por la consulta: "${metadata.mensajeConsulta}"`
+                            );
+                            
                             await enviarMensajeConBotones(chatId, `✅ ¡Hecho! Ya podéis hablar por aquí:`, [
                                 [{ text: "📲 WhatsApp Directo", url: linkWA }],
                                 [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
@@ -1332,38 +1352,6 @@ module.exports = async function handler(req, res) {
                         }
                         return res.status(200).json({ ok: true });
                     }
-                }
-            
-                // 🫧 LIMPIO: NUEVO INTERCEPTOR DE TICKET (#REF) PARA CLIENTES
-
-                const esRespuestaAlTicket = esRespuesta && 
-                (message.reply_to_message.text.includes("Número de Pedido") || 
-                message.reply_to_message.text.includes("#REF"));
-
-                if (esRespuestaAlTicket) {
-                await enviarMensajeSimple(chatId, "🔍 Validando código de seguridad...");
-
-                // 1. Llamamos al servicio para buscar por el código único
-                // Este servicio ya debe tener la lógica de limpiar el prefijo y buscar coincidencia exacta
-                const pedido = await escaparateService.buscarPedidoPorTicket(textoRecibido, airtableService);
-
-                if (pedido) {
-                    // 2. Formateamos el mensaje del pedido encontrado
-                    // Usamos los campos que devuelve Airtable: Pedido_Detalle, Estado, Fecha_Entrega
-                    const txt = `🧵 **Encargo Encontrado**\n📦 **Detalle:** ${pedido.detalle}\n📌 **Estado:** ${pedido.estado}\n📅 **Entrega:** ${pedido.entrega}`;
-                    
-                    await enviarMensajeConBotones(chatId, txt, [
-                        [{ text: "🙋 ¡Tengo una duda sobre este!", callback_data: `INT_PEDIDO_${pedido.id}` }]
-                    ]);
-                } else {
-                    // Mensaje de error si no hay coincidencia exacta
-                    await enviarMensajeSimple(chatId, "😔 No encuentro ningún pedido con ese código exacto. Revisa que esté bien escrito (ej: 7634 o #REF-7634).");
-                }
-
-                await enviarMensajeConBotones(chatId, "¿Ayudo en algo más?", [
-                    [{ text: "🏠 Volver al Menú", callback_data: "CLI_INICIO" }]
-                ]);
-                return res.status(200).json({ ok: true }); 
                 }
                             
                 // NUEVO: Interceptor de IA para el ARCHIVADOR VISUAL
@@ -1397,23 +1385,12 @@ module.exports = async function handler(req, res) {
                         }
                     }
                 }
-              
-                // SALUDO PRINCIPAL
-                
-                else if (textoMinus === "/start" || textoMinus === "hola") {
 
-                    const botones = escaparateService.obtenerBotonesMenuPrincipal(); 
-                    const bienvenida = "¡Hola, primor! Soy Mamassistant...";
-                    
-                    await enviarMensajeConBotones(chatId, bienvenida, botones);
-                    return res.status(200).json({ ok: true }); 
-                }
-                // 3. ÚLTIMA OPCIÓN: IA
-                else {
-                    const respuestaIA = await openaiService.generarRespuesta(textoRecibido);
-                    await enviarMensajeSimple(chatId, respuestaIA);
-                    return res.status(200).json({ ok: true }); 
-                }
+                // 3. CAJÓN DE SASTRE (Solo se llega aquí si NO es saludo y NO hay metadatos)
+                    const mensajeAyuda = "No te he entendido muy bien, primor. 🧵 ¿Quieres consultar un pedido o dejar una consulta? Usa los botones del /start";
+                    await enviarMensajeSimple(chatId, mensajeAyuda);
+                    return res.status(200).json({ ok: true }); // ✅ FINAL DE TRAYECTO
+            
             } //CIERRE FLUJO DE CLIENTES
             
          }//CIERRE FLUJO DE TEXTO 

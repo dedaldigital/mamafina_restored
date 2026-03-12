@@ -53,22 +53,27 @@ class EscaparateService {
 a// services/escaparateService.js
 
 async buscarPedidoPorTicket(textoUsuario, airtableService) {
-    // 1. Limpieza: Quitamos el prefijo y espacios. Nos quedamos solo con los números.
+    // 1. Limpieza extrema: quitamos prefijos, espacios y forzamos Mayúsculas
     const soloNumeros = textoUsuario.toUpperCase().replace(/#REF-/g, "").trim();
+    
     if (!soloNumeros) return null;
 
-    // 2. Reconstruimos el ID exacto que hay en tu columna de Airtable
+    // 2. Reconstruimos el ID exacto
     const ticketExacto = `#REF-${soloNumeros}`;
+    
+    // Debug: Esto saldrá en tus logs de Vercel para que veas qué busca
+    console.log(`🔎 Buscando ticket: "${ticketExacto}" en la columna ID_Pedido_Unico`);
 
     try {
-        // 3. Búsqueda exacta: Usamos el operador '=' en la fórmula de Airtable
+        // 3. Fórmula de Airtable (Asegúrate de que el nombre de la columna sea idéntico)
         const formula = `{ID_Pedido_Unico} = '${ticketExacto}'`;
+        
         const registros = await airtableService.base(airtableService.t.pedidos).select({
             filterByFormula: formula,
             maxRecords: 1
         }).all();
 
-        if (registros.length > 0) {
+        if (registros && registros.length > 0) {
             const p = registros[0].fields;
             return {
                 id: registros[0].id,
@@ -78,13 +83,14 @@ async buscarPedidoPorTicket(textoUsuario, airtableService) {
                 nombre: p.Nombre_Cliente
             };
         }
+        
+        console.log("❌ No se encontró ningún registro con esa fórmula.");
         return null;
     } catch (e) {
         console.error("💥 Error en buscarPedidoPorTicket:", e.message);
         return null;
     }
 }
-
 // Formatea el mensaje de estado de un pedido para la clienta
 
 formatearMensajePedido(pedido, indice) {
