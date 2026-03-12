@@ -442,8 +442,7 @@ module.exports = async function handler(req, res) {
                     const abierta = escaparateService.estaLaTiendaAbierta();
                 
                     if (abierta) {
-                        await airtableService.actualizarEstadoPedido(pedidoData.id, "🙋Cliente Interesado");
-                        const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
+                        await airtableService.actualizarEstadoPedido(pedidoData.id, "🙋Cliente Interesado");                        const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
                         const linkWA = await escaparateService.formatearLinkWA("636796210", nombreCliente, mensajeWA);
                         
                         await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras:", [
@@ -1365,8 +1364,20 @@ module.exports = async function handler(req, res) {
 
     async function formatearLinkWA(telefono, nombre, mensajeBase) {
         if (!telefono) return null;
-        let telLimpio = String(telefono).replace(/[^0-9]/g, ''); // Limpieza pura 
-        if (telLimpio.length === 9) telLimpio = '34' + telLimpio; // Prefijo automático 
+        
+        // 1. Limpiamos dejando solo los números puros
+        let telLimpio = String(telefono).replace(/[^0-9]/g, ''); 
+        
+        // 2. Si por algún motivo empieza por '0' (ej: 0650...), se lo quitamos
+        if (telLimpio.startsWith('0') && !telLimpio.startsWith('00')) {
+            telLimpio = telLimpio.substring(1);
+        }
+        
+        // 3. Si tiene 9 dígitos exactos y empieza por 6 o 7 (móvil de España), le ponemos el 34
+        if (telLimpio.length === 9 && /^[67]/.test(telLimpio)) {
+            telLimpio = '34' + telLimpio;
+        }
+    
         const textoWA = encodeURIComponent(mensajeBase.replace('{nombre}', nombre || 'cliente'));
         return `https://wa.me/${telLimpio}?text=${textoWA}`;
     }

@@ -504,22 +504,16 @@ class AirtableService {
     }
 
     async guardarConsultaFinal(metadata) {
-        try {
-            return await this.base(this.t.consultas).create([{
-                fields: {
-                    "Nombre/ID": metadata.nombreCliente,
-                    "Telefono": metadata.telefonoCliente,
-                    "Consulta": metadata.mensajeConsulta, // <--- NUEVO CAMPO
-                    "ID_Sesion": String(metadata.chatId),
-                    "User_Telegram": metadata.userTelegram,
-                    "Estado": metadata.estado
-                }
-            }]);
-        } catch (e) {
-            console.error("💥 Error guardando consulta:", e.message);
-        }
+        return await this.base(this.t.consultas).create([{
+            fields: {
+                "Nombre_Cliente": metadata.nombreCliente,
+                "Telefono": metadata.telefono,
+                "Consulta": metadata.Consulta, // ✨ Aquí es donde se guarda el mensaje
+                "Estado": "Pendiente"
+            }
+        }]);
     }
-
+    
     async registrarNuevaConsulta(chatId, usuario, tipo) {
         try {
             await this.base(this.t.consultas).create([{

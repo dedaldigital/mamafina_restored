@@ -101,19 +101,17 @@ class OrderService {
                 return { text: "✅ No hay consultas pendientes.", blocks: [] };
             }
     
-            const blocks = consultas.map(c => {
-
-                // Si por lo que sea Airtable no trae el ID, usamos una alerta
-                const idSeguro = c.id || "SIN_ID";
-                // Importante: Usamos encodeURIComponent para que el link no se rompa
-                const textoWA = encodeURIComponent(`¡Hola ${c.nombre}! Soy Reyes, te escribo por la consulta que nos dejaste... ✨`);
-                const linkWA = `https://wa.me/${String(c.tel).replace(/[^0-9]/g, '')}?text=${textoWA}`;
-                
+            const blocks = consultas.map(r => {
+                // Si r.fields.Consulta no existe en Airtable, saldrá undefined
+                const nombre = r.fields.Nombre_Cliente || "Desconocido";
+                const duda = r.fields.Consulta || "Sin mensaje"; // ✨ Cambia 'Mensaje' por 'Consulta'
+                const tel = r.fields.Telefono || "";
+            
                 return {
-                    text: `📝 **CONSULTA DE:** ${c.nombre}\n💬 "${c.duda}"\n📞 Tel: ${c.tel}`,
+                    text: `👤 **CLIENTE:** ${nombre}\n💬 **DUDA:** ${duda}\n📱 **TEL:** ${tel}`,
                     buttons: [
-                        [{ text: "📲 WhatsApp Directo", url: linkWA }],
-                        [{ text: "✅ Marcar como Atendida", callback_data: `CERRAR_CONSULTA|${idSeguro}` }]
+                        [{ text: "📲 Responder WhatsApp", url: `https://wa.me/${tel.replace(/[^0-9]/g, '')}` }],
+                        [{ text: "✅ Cerrar Consulta", callback_data: `CERRAR_CONSULTA|${r.id}` }]
                     ]
                 };
             });
