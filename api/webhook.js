@@ -367,6 +367,62 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
+            //BOTONES GESTIÓN ACADEMIA 🫧 LIMPIO
+ 
+            //Administrar clases
+            else if (data.startsWith("ADM_CLASES|")) {
+                const tipo = data.split('|')[1];
+                const blocks = await academiaService.listarClasesAdmin(tipo);
+                await enviarMensajeSimple(chatId, `📊 Gestión de **${tipo}**:`);
+                for (const b of blocks) {
+                    await enviarMensajeConBotones(chatId, b.text, b.buttons);
+                }
+            }
+
+
+            // Modificar horario clase
+            else if (data.startsWith("MOD_HORA_CLASE|")) {
+                const idClase = data.split('|')[1];
+                // Usamos un sistema de borrador similar al de inventario o pedidos [cite: 6, 7]
+                const meta = { step: "ADM_ESP_NUEVA_HORA", idClase };
+                await enviarMensajeConReply(chatId, `⏰ ¿Cuál es el nuevo horario para esta clase?\n\n(DATOS_IA: ${JSON.stringify(meta)})`);
+                return res.status(200).json({ ok: true });
+            }
+
+            // Gestión de alumnas apuntadas
+
+            // A. Ver quién está apuntada
+            else if (data.startsWith("VER_LISTA|")) {
+                const idClase = data.split('|')[1];
+                const lista = await academiaService.obtenerAlumnasDeClase(idClase);
+                
+                await enviarMensajeSimple(chatId, lista.text);
+                for (const block of lista.blocks) {
+                    await enviarMensajeConBotones(chatId, block.text, block.buttons);
+                }
+                await responderBoton(callback_query.id);
+                return res.status(200).json({ ok: true });
+            }
+
+            // B. Ejecutar la baja y disparar el Relevo Automático
+            else if (data.startsWith("BORRAR_ALU|")) {
+                const [, idClase, idAluRecord] = data.split('|');
+                
+                // Llamamos a la función que ya diseñamos de desapuntarAlumna
+                const result = await academiaService.desapuntarAlumna(idClase, idAluRecord);
+                
+                if (result.button) {
+                    // Si hay relevo (lista de espera), enviamos el mensaje con el botón de WhatsApp
+                    await enviarMensajeConBotones(chatId, result.text, result.button);
+                } else {
+                    await enviarMensajeSimple(chatId, result.text);
+                }
+                
+                await responderBoton(callback_query.id);
+                return res.status(200).json({ ok: true });
+            }
+            
+
             //BOTONES CLIENTES
 
             // CLIENTE: HABLAR / INTERESADO 🫧 LIMPIO
@@ -1104,8 +1160,20 @@ module.exports = async function handler(req, res) {
                         const taskData = await taskService.handleTaskInput(chatId, textoRecibido);
                         await enviarMensajeConBotones(chatId, taskData.text, taskData.buttons);
                         return res.status(200).json({ ok: true });
-                    }        
-                
+                    }
+                    
+                    //GESTIÓN DE CLASES (ADMIN)
+
+                    // En el bloque de recepción de texto (message.text)
+                    if (paso === "ADM_ESP_NUEVA_HORA") {
+                        const result = await academiaService.actualizarHorarioClase(metadata.idClase, textoRecibido);
+                        
+                        const botones = [[{ text: result.esGrupo ? "📲 Enviar al Grupo" : `📲 Avisar a ${result.nombreAlu}`, url: result.linkWA }]];
+                        
+                        await enviarMensajeConBotones(chatId, `${result.text}\n\n${result.instrucciones}`, botones);
+                        return res.status(200).json({ ok: true });
+                    }
+                        
 
                     // VISUALIZAR
 
@@ -1342,6 +1410,17 @@ module.exports = async function handler(req, res) {
                 const respuestaIA = await openaiService.generarRespuesta(textoRecibido);
                 await enviarMensajeSimple(chatId, respuestaIA);
                 return res.status(200).json({ ok: true });
+                }
+
+                //COMANDOS PARA GESTIONAR LA ACADEMIA 🫧 LIMPIO
+                if (textoMinus === "academia" || textoMinus === "/clases") {
+                    const botones = [
+                        [{ text: "🧵 Gestionar Costura", callback_data: "ADM_CLASES|🧵Costura" }],
+                        [{ text: "🧶 Gestionar Crochet", callback_data: "ADM_CLASES|🧶Crochet" }],
+                        [{ text: "🏠 Menú Principal", callback_data: "/start" }]
+                    ];
+                    await enviarMensajeConBotones(chatId, "🎓 **Panel de Control de la Academia**\n\n¿Qué especialidad quieres gestionar hoy, jefa?", botones);
+                    return res.status(200).json({ ok: true });
                 }
                 
                 return res.status(200).json({ ok: true });
