@@ -548,37 +548,49 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
-            // PEDIDO ESPECÍFICO (INTERÉS)
-
+            // 🫧 CORREGIDO: Bloque de Interés en Pedido Específico
             else if (data.startsWith("INT_PEDIDO_")) {
                 const idPedido = data.replace("INT_PEDIDO_", "");
                 const abierta = escaparateService.estaLaTiendaAbierta();
-                // Buscamos el registro real
+                
+                // 1. Obtenemos el registro completo de Airtable
                 const pedidoData = await airtableService.obtenerPedidoPorId(idPedido);
-            
-                if (!pedidoData) {
-                    await enviarMensajeSimple(chatId, "⚠️ No he podido encontrar los detalles de ese pedido.");
+
+                if (!pedidoData || !pedidoData.fields) {
+                    await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles de ese encargo en mi libreta.");
                     return res.status(200).json({ ok: true });
                 }
-            
-                // ✨ CORRECCIÓN: Accedemos a .fields.Pedido_Detalle
-                const detallePedido = pedidoData.fields.Pedido_Detalle || "mi pedido";
-            
+
+                // 2. EXTRAEMOS LOS DATOS CORRECTAMENTE (Desde .fields)
+                const detallePedido = pedidoData.fields.Pedido_Detalle || "mi encargo";
+                const nombreCliente = pedidoData.fields.Nombre_Cliente || "Cliente";
+
                 if (abierta) {
+                    // Marcamos en Airtable que el cliente ha preguntado
                     await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
-                    const mensajeConsulta = `¡Hola! Soy cliente y quería consultar sobre mi pedido de: ${detallePedido}`;
                     
-                    // Usamos el servicio oficial para el link
-                    const linkWA = await escaparateService.formatearLinkWA("636796210", "Reyes y Begoña", mensajeConsulta);
+                    // 3. GENERAMOS EL LINK (Usando el servicio y solo texto)
+                    const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
+                    const linkWA = await escaparateService.formatearLinkWA("636796210", nombreCliente, mensajeWA);
                     
-                    await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras:", [
-                        [{ text: "📲 WhatsApp", url: linkWA }]
+                    await enviarMensajeConBotones(chatId, "✅ ¡Genial! Pulsa aquí para hablar con nosotras directamente:", [
+                        [{ text: "📲 Hablar por WhatsApp", url: linkWA }],
+                        [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
                     ]);
-                    
                 } else {
+                    // TALLER CERRADO: Registro automático de consulta
                     await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
-                    await airtableService.registrarConsultaAutomatica(chatId, user, pedidoData.nombre, pedidoData.telefono, pedidoData.detalle);
-                    await enviarMensajeConBotones(chatId, `¡Hola! Taller cerrado 😴. He dejado una nota automática.\n\nMañana te diremos algo. ✨`, [[{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]]);
+                    await airtableService.registrarConsultaAutomatica(
+                        chatId, 
+                        user, 
+                        nombreCliente, 
+                        pedidoData.fields.Telefono || "", 
+                        `Consulta sobre: ${detallePedido}`
+                    );
+                    
+                    await enviarMensajeConBotones(chatId, `¡Hola! Ahora mismo el taller está cerrado 😴. He dejado una nota en tu ficha y mañana mismo Reyes o Begoña te dirán algo. ✨`, [
+                        [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
+                    ]);
                 }
                 return res.status(200).json({ ok: true });
             }
