@@ -505,19 +505,16 @@ class AirtableService {
 
     async guardarConsultaFinal(metadata) {
         try {
-            // Log para que veas en la consola de Vercel qué está llegando realmente
-            console.log("💾 Guardando consulta con metadata:", JSON.stringify(metadata));
-    
             return await this.base(this.t.consultas).create([{
                 fields: {
-                    "Nombre_Cliente": metadata.nombreCliente || "Sin nombre",
-                    "Telefono": metadata.telefono || "Sin teléfono", // ✨ Verifica que en Airtable se llame 'Telefono'
-                    "Consulta": metadata.mensajeConsulta || "Sin mensaje",
+                    "Nombre_Cliente": metadata.nombreCliente,
+                    "Telefono": metadata.telefono, // ✨ Ahora sí llegará con datos
+                    "Consulta": metadata.mensajeConsulta,
                     "Estado": "Pendiente"
                 }
             }]);
         } catch (e) {
-            console.error("💥 Error al guardar en Airtable:", e.message);
+            console.error("💥 Error en Airtable:", e.message);
         }
     }
 

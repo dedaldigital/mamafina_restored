@@ -134,11 +134,15 @@ async handleConsultationWorkflow(textoRecibido, metadata) {
         result.text = `🏷️ Muy bien, **${textoRecibido}**. \n¿A qué número de **Teléfono** podemos contactarte?`;
     } 
     else if (metadata.step === "ESP_TELEFONO") {
-        result.meta.telefonoCliente = textoRecibido;
-        const abierta = this.estaLaTiendaAbierta();
-        result.meta.estado = abierta ? "WhatsApp Abierto" : "Pendiente";
-        result.isFinal = true;
-        result.text = "✅ ¡Anotado! Mañana Reyes o Begoña te responderán.";
+        // Busca este trozo en escaparateService.js
+        if (metadata.step === "ESP_TELEFONO") {
+            // 1. GUARDAMOS EL DATO (Esto es lo que faltaba)
+            result.meta.telefono = textoRecibido; 
+            
+            // 2. Marcamos como final
+            result.isFinal = true;
+            result.text = `✅ ¡Perfecto! He anotado todo. Enseguida te atenderemos. ✨`;
+        }
     }
 
     return result;
