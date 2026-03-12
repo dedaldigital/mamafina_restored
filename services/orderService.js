@@ -130,30 +130,36 @@ class OrderService {
     // 6. LISTAR INTERESADOS: Clientes que han preguntado por sus pedidos hoy
     async getInterestedClients() {
         try {
-            // Buscamos en la memoria de Airtable los pedidos con estado "🙋Cliente Interesado"
-            const interesados = await airtableService.obtenerPedidosConInteres();
-            
-            if (!interesados || interesados.length === 0) {
-                return { text: "☕️ Nadie ha preguntado por pedidos hoy, jefa. ¡Tómate un respiro!", blocks: [] };
+            const pedidos = await airtableService.getPedidosInteresados();
+            if (!pedidos || pedidos.length === 0) {
+                return { text: "✅ No hay clientes esperando respuesta ahora mismo.", blocks: [] };
             }
-
-            const blocks = interesados.map(p => {
-                // Generamos el link de WhatsApp específico para el pedido del cliente
-                const linkWA = `https://wa.me/${String(p.tel).replace(/[^0-9]/g, '')}?text=Hola ${p.nombre}, soy Reyes. He visto que has preguntado por tu pedido de "${p.detalle}"... ✨`;
+    
+            const blocks = await Promise.all(pedidos.map(async p => {
+                // ✨ IMPORTANTE: Usamos la lógica de limpieza real
+                const nombreFinal = p.fields.Nombre_Cliente || "Cliente";
+                const mensajeBase = `Hola ${nombreFinal}, soy Reyes. He visto que has preguntado por tu pedido de "${p.fields.Pedido_Detalle}"... ✨`;
+                
+                // 🛠️ Aquí está la clave: llamamos a la función que SÍ sabe tratar los números
+                // Nota: Si formatearLinkWA no está en este archivo, usa la lógica manual corregida:
+                let telLimpio = String(p.fields.Telefono).replace(/[^0-9]/g, '');
+                if (telLimpio.length === 9 && /^[67]/.test(telLimpio)) {
+                    telLimpio = '34' + telLimpio;
+                }
+                const linkWA = `https://wa.me/${telLimpio}?text=${encodeURIComponent(mensajeBase)}`;
                 
                 return {
-                    text: `👤 **CLIENTE:** ${p.nombre}\n🧵 **PEDIDO:** ${p.detalle}\n📍 **ESTADO:** ${p.estado}`,
+                    text: `👤 **CLIENTE:** ${nombreFinal}\n🧵 **PEDIDO:** ${p.fields.Pedido_Detalle}\n📍 **ESTADO:** ${p.fields.Estado}`,
                     buttons: [[{ text: "📲 Avisar por WhatsApp", url: linkWA }]]
                 };
-            });
-
+            }));
+    
             return { text: "🙋‍♂️ **CLIENTES INTERESADOS:**", blocks };
         } catch (e) {
             console.error("💥 Error en getInterestedClients:", e.message);
             return { text: "⚠️ Error al consultar la lista de interesados." };
         }
     }
-
     // 7. CERRAR CONSULTA: Cambia el estado en Airtable para que no aparezca más como pendiente
  
    // services/orderService.js

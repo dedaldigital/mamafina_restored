@@ -373,7 +373,8 @@ module.exports = async function handler(req, res) {
             else if (data === "CLI_INTERESADO") {
                 const abierta = escaparateService.estaLaTiendaAbierta();
                 if (abierta) {
-                const linkWA = await formatearLinkWA("636796210", result.meta.nombreCliente, mensajeWA);                    await enviarMensajeConBotones(chatId, "¡Estamos en el taller! 🧵\n\nPuedes pasarte, hablarnos por WhatsApp o llamarnos directamente pulsando aquí:\n👉 +34636796210", [                        //[{ text: "¡Estamos en el taller! 🧵 Si quieres llámanos ahora 📞", url: linkLlamada }],
+                const linkWA = await formatearLinkWA("636796210", result.meta.nombreCliente, mensajeWA);                    
+                await enviarMensajeConBotones(chatId, "¡Estamos en el taller! 🧵\n\nPuedes pasarte, hablarnos por WhatsApp o llamarnos directamente pulsando aquí:\n👉 +34636796210", [                        //[{ text: "¡Estamos en el taller! 🧵 Si quieres llámanos ahora 📞", url: linkLlamada }],
                         [{ text: "📲 WhatsApp", url: linkWA }],
                         [{ text: "🏠 Menú", callback_data: "CLI_INICIO" }]
                     ]);
@@ -930,7 +931,8 @@ module.exports = async function handler(req, res) {
                         const abierta = escaparateService.estaLaTiendaAbierta();
                         if (abierta) {
                             const mensajeWA = `¡Hola! Soy ${result.meta.nombreCliente}. Os escribo por la consulta: "${result.meta.mensajeConsulta}"`;
-                            const linkWA = await formatearLinkWA(p.Telefono, nombreCliente, mensajeWA);                            await enviarMensajeConBotones(chatId, `✅ ¡Hecho! Ya podéis hablar por aquí:`, [
+                            const linkWA = await formatearLinkWA("636796210", result.meta.nombreCliente, mensajeWA);                    
+                            await enviarMensajeConBotones(chatId, `✅ ¡Hecho! Ya podéis hablar por aquí:`, [
                                 [{ text: "📲 WhatsApp Directo", url: linkWA }],
                                 [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
                             ]);
