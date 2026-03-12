@@ -15,7 +15,10 @@ class AirtableService {
             tasks: process.env.AT_TABLE_TASKS,           
             config: process.env.AT_TABLE_CONFIG,         
             registros: process.env.AT_TABLE_REGISTROS,
-            consultas: process.env.AT_TABLE_CONSULTAS || 'Consultas' // El nombre exacto de tu pestaña
+            consultas: process.env.AT_TABLE_CONSULTAS || 'Consultas',
+            academia: process.env.AT_TABLE_ALUMNNAS,
+            clases: process.env.AT_TABLE_CLASES
+ 
         };
     }
 
@@ -29,7 +32,7 @@ class AirtableService {
             } catch (e) { this._logError(e, 'getConfigValue'); }
         }
 
-        // --- SECCIÓN: TAREAS ---
+        //TAREAS
         async crearTarea(descripcion, prioridad = "Media") {
             try {
                 return await this.base(this.t.tasks).create([{
@@ -66,6 +69,18 @@ class AirtableService {
             } catch (e) { this._logError(e, 'vaciarHistorialTareas'); }
         }
 
+        async eliminarTarea(idTarea) {
+            try {
+                // ✨ CORRECCIÓN: Cambiamos 'tareas' por 'tasks' para que coincida con el constructor
+                await this.base(this.t.tasks).destroy(idTarea);
+                return true;
+            } catch (e) {
+                console.error("❌ Error eliminando tarea:", e.message);
+                throw e;
+            }
+        }
+
+        //FUNCIONES PEDIDOS
         async vaciarPedidosCompletados() {
             try {
                 // 1. Buscamos pedidos que ya estén entregados
@@ -87,7 +102,7 @@ class AirtableService {
             }
         }
 
-        // --- SECCIÓN: PEDIDOS ---
+
         async getPedidosActivos() {
             try {
 
@@ -153,9 +168,9 @@ class AirtableService {
             } catch (e) { this._logError(e, 'cancelarBorradorPedido'); }
         }
 
-        // --- SECCIÓN: INVENTARIO Y REGISTROS ---
+        // INVENTARIO Y REGISTROS 
 
-        // Única versión válida de crearRegistro (Sin campos automáticos)
+        
         async crearRegistro(articulo, accion, cantidad, stockFinal, responsable = "Admin") {
             try {
                 return await this.base(this.t.registros).create([{
@@ -239,7 +254,7 @@ class AirtableService {
         }
 
 
-        // --- SECCIÓN: VISIÓN IA (NUEVO) ---
+        // VISUALIZADOR
         async crearRegistroDesdeIA(nombre, datos) {
             try {
                 let tabla = this.t.inventario; // Por defecto: Mercería 
@@ -281,7 +296,7 @@ class AirtableService {
                 throw e;
             }  
         }
-    // Dentro de la clase AirtableService
+
         async buscarTelas(termino) {
             try {
                 // Limpiamos el término y lo pasamos a minúsculas
@@ -323,7 +338,6 @@ class AirtableService {
             }]);
         }
 
-        // --- DENTRO DE airtableService.js ---
 
         async obtenerBorradorDiseno(chatId) {
             try {
@@ -340,18 +354,9 @@ class AirtableService {
             }
         }
 
-        async eliminarTarea(idTarea) {
-            try {
-                // ✨ CORRECCIÓN: Cambiamos 'tareas' por 'tasks' para que coincida con el constructor
-                await this.base(this.t.tasks).destroy(idTarea);
-                return true;
-            } catch (e) {
-                console.error("❌ Error eliminando tarea:", e.message);
-                throw e;
-            }
-        }
+        
 
-        // Obtener todas las consultas de clientes
+        // CONSULTAS
 
         async obtenerTodasLasConsultas() {
             try {
@@ -380,7 +385,7 @@ class AirtableService {
             }));
         }
 
-        // Obtener datos de la tabla 'Pedidos_y_Clientes'
+        // CLIENTES INTERESADOS EN SU PEDIDO
         async obtenerPedidosConInteres() {
             try {
                 const records = await this.base(this.t.pedidos).select({
@@ -395,7 +400,7 @@ class AirtableService {
             } catch (e) { return []; }
         }
 
-
+        // CATÁLOGO
         async buscarTrabajosPortfolio(termino) {
             try {
                 const t = termino.toLowerCase().trim();
@@ -426,7 +431,7 @@ class AirtableService {
         }
 
 
-// --------------------- CLIENTE ----------------------
+//REGISTRO CONSULTAS/INTERÉS DEL CLIENTE
 
     async registrarProspecto(chatId, nombreTelegram) {
         try {
@@ -456,6 +461,7 @@ class AirtableService {
         }
     }
 
+    //CLIENTES
     async buscarPedidoPublico(telefonoRecibido) {
         try {
             const telBusqueda = String(telefonoRecibido).replace(/[^0-9]/g, '');
@@ -557,20 +563,16 @@ class AirtableService {
         }
     }
 
-    // FICHA PRIVADA: Filtrado por ID de Telegram
-    async obtenerFichaAlumna(chatId) {
-        try {
-            const records = await this.base('Alumnas_Comunidad').select({
-                filterByFormula: `{Telegram_ID} = '${String(chatId)}'`, // Forzamos String
-                maxRecords: 1
-            }).firstPage();
-            
-            return records.length > 0 ? { id: records[0].id, ...records[0].fields } : null;
-        } catch (e) {
-            return null;
-        }
+   //ACADEMIA
+   async obtenerAlumnaPorID(idAlumna) {
+    const records = await this.base(this.t.academia).select({
+        filterByFormula: `{ID_Alumna_Unico} = '${idAlumna}'`,
+        maxRecords: 1
+    }).firstPage();
+    return records.length > 0 ? { id: records[0].id, ...records[0].fields } : null;
     }
-    // 2. CONSULTA DE CLASES: Solo las que tienen huecos
+
+ 
     async obtenerClasesDisponibles() {
         try {
             return await this.base('Gestion_Clases').select({
@@ -580,7 +582,7 @@ class AirtableService {
         } catch (e) { return []; }
     }
 
-    // 3. LISTA DE ESPERA: Protocolo ERR-22 para IDs cortos
+
     async registrarEnListaEspera(chatId, nombre, idClase) {
         try {
             return await this.base('Alumnas_Comunidad').create([{
@@ -593,22 +595,62 @@ class AirtableService {
         } catch (e) { console.error("Error lista espera:", e.message); }
     }
 
-    // Añadir a services/airtableService.js
+ 
 
-    async crearFichaBasica(chatId, username) {
+    async crearFichaBasica(chatId, username, idUnico) {
         try {
-            return await this.base('Alumnas_Comunidad').create([{
+            // Usamos this.t.academia que viene de AT_TABLE_ALUMNAS
+            return await this.base(this.t.academia).create([{
                 fields: {
-                    "Telegram_ID": String(chatId), // Identificador técnico único [cite: 45, 52]
-                    "User_Telegram": username || "", // Guardamos el @alias por si acaso 
-                    "Nombre_Real": "Pendiente", // Se llenará en el flujo conversacional
+                    "Telegram_ID": String(chatId),
+                    "ID_Alumna_Unico": idUnico, // Pasamos el #ALU-XXXX generado
+                    "User_Telegram": username || "",
+                    "Nombre_Real": "Pendiente",
                     "Notas_Tecnicas": "Ficha iniciada desde el Bot. ✨"
                 }
             }]);
         } catch (e) {
-            console.error("💥 Error en creación técnica:", e.message);
+            console.error("💥 Error en crearFichaBasica:", e.message);
+            return null;
+        }
+    }
+
+    async iniciarBorradorAlumna(chatId) {
+        try {
+            const records = await this.base(this.t.academia).create([{
+                fields: { 
+                    "Nombre_Real": "📝 Borrador", // Marcamos como borrador temporal
+                    "Telegram_ID": String(chatId)
+                }
+            }]);
+            return records[0]; 
+        } catch (e) { this._logError(e, 'iniciarBorradorAlumna'); }
+    }
+
+    async obtenerBorradorAcademia(chatId) {
+        try {
+            // Buscamos un registro donde el ID de Telegram coincida y el Nombre_Real sea "📝 Borrador"
+            const records = await this.base(this.t.academia).select({
+                filterByFormula: `AND({Nombre_Real} = '📝 Borrador', {Telegram_ID} = '${chatId}')`,
+                maxRecords: 1
+            }).firstPage();
+    
+            return records.length > 0 ? records[0] : null;
+        } catch (e) {
+            this._logError(e, 'obtenerBorradorAcademia');
+            return null;
+        }
+    }
+    
+    async actualizarPatronAlumna(idRecord, datos) {
+        try {
+            // datos será { "Patron_PDF": [...] } o { "Link_Patron": "..." }
+            return await this.base(this.t.academia).update(idRecord, datos);
+        } catch (e) {
+            console.error("💥 Error en actualizarPatronAlumna:", e.message);
             return null;
         }
     }
 }
+
 module.exports = new AirtableService();
