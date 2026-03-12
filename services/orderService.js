@@ -56,7 +56,7 @@ class OrderService {
         }
     
         // Guardamos los cambios en Airtable
-        await airtableService.actualizarPedido(borradorId, updates);
+        await airtableService.actualizarEstadoPedido(borradorId, updates);
         return result;
     }
 
