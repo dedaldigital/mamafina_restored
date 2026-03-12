@@ -434,10 +434,11 @@ module.exports = async function handler(req, res) {
                 
                 if (abierta) {
                     try {
-                        await airtableService.actualizarEstadoPedido(pedidoData.id, "🙋Cliente Interesado");
-                        console.log("✅ Estado actualizado en Airtable con éxito.");
+                        
+                        await airtableService.actualizarEstadoPedido(pedidoData.id, { "Estado": "🙋Cliente Interesado" });
+                        console.log("✅ Estado actualizado en Airtable: Cliente Interesado");
                     } catch (err) {
-                        console.log("⚠️ No se pudo actualizar el estado:", err.message);
+                        console.log("⚠️ Error al actualizar estado:", err.message);
                     }
 
                     const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;

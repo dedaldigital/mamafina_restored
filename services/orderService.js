@@ -109,8 +109,10 @@ class OrderService {
                 if (telLimpio.length === 9 && /^[67]/.test(telLimpio)) {
                     telLimpio = '34' + telLimpio;
                 }
-                const urlWA = telLimpio ? `https://wa.me/${telLimpio}` : null;
-
+                // 2. Creación del mensaje pre-rellenado
+                const mensajeRespuesta = `¡Hola ${nombre}! ✨ Soy Reyes, de la costura. Te escribo por la consulta que nos dejaste: "${duda}"...`;
+                const urlWA = telLimpio ? `https://wa.me/${telLimpio}?text=${encodeURIComponent(mensajeRespuesta)}` : null;
+       
                 const buttons = [];
                 if (urlWA) {
                     buttons.push([{ text: "📲 Responder WhatsApp", url: urlWA }]);
