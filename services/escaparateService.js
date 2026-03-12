@@ -83,11 +83,8 @@ async buscarPedidoPorTicket(textoUsuario, airtableService) {
                 nombre: p.Nombre_Cliente
             };
         }
-        
-        console.log("❌ No se encontró ningún registro con esa fórmula.");
         return null;
     } catch (e) {
-        console.error("💥 Error en buscarPedidoPorTicket:", e.message);
         return null;
     }
 }

@@ -399,14 +399,17 @@ module.exports = async function handler(req, res) {
                 const idPedido = data.replace("INT_PEDIDO_", "").trim(); 
                 const abierta = escaparateService.estaLaTiendaAbierta();
                 
+                
                 // ✨ Definimos 'user' para que no de error en la consulta automática
                 const user = callback_query.from.first_name || "Cliente";
                 const chatId = callback_query.message.chat.id;
 
+                // Buscamos por ID real
                 const pedidoData = await airtableService.obtenerPedidoPorId(idPedido);
 
                 if (!pedidoData || !pedidoData.fields) {
-                    await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles de ese encargo.");
+                    console.log("❌ Airtable no encontró el registro con ID:", idPedido);
+                    await enviarMensajeSimple(chatId, "⚠️ ¡Ay! No encuentro los detalles de ese encargo en mi libreta.");
                     return res.status(200).json({ ok: true });
                 }
 
@@ -415,6 +418,7 @@ module.exports = async function handler(req, res) {
 
                 if (abierta) {
                     await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
+                    // 2. Usamos el servicio modular para el link
                     const mensajeWA = `¡Hola! Soy ${nombreCliente}. Quería consultar sobre mi pedido de: ${detallePedido}. ✨`;
                     const linkWA = await escaparateService.formatearLinkWA("636796210", nombreCliente, mensajeWA);
                     
@@ -422,7 +426,9 @@ module.exports = async function handler(req, res) {
                         [{ text: "📲 Hablar por WhatsApp", url: linkWA }],
                         [{ text: "🏠 Menú Principal", callback_data: "CLI_INICIO" }]
                     ]);
+
                 } else {
+                    
                     await airtableService.actualizarEstadoPedido(idPedido, "🙋Cliente Interesado");
                     // ✨ Ahora 'user' ya está definido y no fallará
                     await airtableService.registrarConsultaAutomatica(
