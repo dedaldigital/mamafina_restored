@@ -41,7 +41,7 @@ class AcademiaService {
         try {
             // Buscamos en la tabla de Gestión de Clases
       
-            const records = await this.base(process.env.AT_TABLE_CLASES).select({
+            const records = await airtableService.base(process.env.AT_TABLE_CLASES).select({
                 filterByFormula: `AND({Tipo_Clase} = '${tipo}', {Huecos_Libres} > 0)`,
                 sort: [{ field: "Nombre_Clase", direction: "asc" }]
             }).all();
@@ -153,7 +153,7 @@ class AcademiaService {
     //BUSCAR ALUMNA POR SU ID
     async buscarAlumnaPorID(idUnico) {
         try {
-            const records = await this.base(process.env.AT_TABLE_ALUMNAS).select({
+            const records = await airtableService.base(process.env.AT_TABLE_ALUMNAS).select({
                 filterByFormula: `{ID_Alumna_Unico} = '${idUnico}'`,
                 maxRecords: 1
             }).firstPage();
@@ -170,8 +170,7 @@ class AcademiaService {
 
     // OBTENER / CREAR FICHA
     async obtenerOcrearFicha(chatId, username) {
-        let ficha = await airtableService.obtenerFichaAlumna(chatId);
-        
+        let ficha = await airtableService.obtenerFichaAlumna(chatId);        
         if (!ficha) {
             const nuevoID = this.generarIDAlumna(chatId);
             // Usamos la variable de entorno AT_TABLE_ALUMNAS mapeada en airtableService
@@ -230,7 +229,7 @@ class AcademiaService {
         try {
             // Buscamos en la tabla de Gestión de Clases
       
-            const records = await this.base(process.env.AT_TABLE_CLASES).select({
+            const records = await airtableService.base(process.env.AT_TABLE_CLASES).select({
                 filterByFormula: `AND({Tipo_Clase} = '${tipo}', {Huecos_Libres} > 0)`,
                 sort: [{ field: "Nombre_Clase", direction: "asc" }]
             }).all();
