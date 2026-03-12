@@ -131,15 +131,26 @@ class AirtableService {
 
         async actualizarEstadoPedido(idPedido, datos) {
             try {
-            
-                const campos = (typeof datos === 'string') ? { "Estado": datos } : datos;
+                let campos = {};
         
-                console.log(`📡 Sincronizando Pedido ${idPedido} con Airtable...`);
+                // 1. Si 'datos' es un texto (ej: "📥 Pendiente"), creamos el objeto Estado
+                if (typeof datos === 'string') {
+                    campos = { "Estado": datos.trim() }; 
+                } 
+                // 2. Si ya es un objeto (ej: { Pedido_Detalle: "..." }), lo usamos tal cual
+                else {
+                    campos = datos;
+                }
+        
+                console.log(`📡 Enviando a Airtable ID ${idPedido}:`, JSON.stringify(campos));
+        
+                // 3. Importante: Usamos la sintaxis de registro único (id, campos)
                 return await this.base(this.t.pedidos).update(idPedido, campos);
-                
+        
             } catch (e) {
-                console.error("💥 Error en actualización:", e.message);
-                throw e;
+                console.error("💥 Error real de Airtable:", e.message);
+                // Esto nos dirá en el log qué valor exacto rechazó
+                throw e; 
             }
         }
 
