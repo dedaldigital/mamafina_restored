@@ -98,21 +98,31 @@ class OrderService {
             }
     
             const blocks = consultas.map(r => {
-                // Si r.fields.Consulta no existe en Airtable, saldrá undefined
-                const nombre = r.fields.Nombre_Cliente || "Desconocido";
-                const duda = r.fields.Consulta || "Sin mensaje"; // ✨ 
-                const tel = r.fields.Telefono || "Sin teléfono"
+                // ✨ CORRECCIÓN: Usamos las propiedades que definiste en airtableService.js
+                // r.fields ya no existe aquí porque airtableService lo mapeó a r.nombre, r.duda, etc.
+                const nombre = r.nombre || "Desconocido"; 
+                const duda = r.duda || "Sin mensaje"; 
+                const tel = r.tel || ""; // Si no hay teléfono, dejamos vacío para evitar errores
+    
+                // Limpiamos el teléfono para el link de WhatsApp de forma segura
+                const telLimpio = tel ? tel.replace(/[^0-9]/g, '') : "";
+                const urlWA = telLimpio ? `https://wa.me/${telLimpio}` : null;
+    
+                const buttons = [];
+                if (urlWA) {
+                    buttons.push([{ text: "📲 Responder WhatsApp", url: urlWA }]);
+                }
+                buttons.push([{ text: "✅ Cerrar Consulta", callback_data: `CERRAR_CONSULTA|${r.id}` }]);
+    
                 return {
-                    text: `👤 **CLIENTE:** ${nombre}\n💬 **DUDA:** ${duda}\n📱 **TEL:** ${tel}`,
-                    buttons: [
-                        [{ text: "📲 Responder WhatsApp", url: `https://wa.me/${tel.replace(/[^0-9]/g, '')}` }],
-                        [{ text: "✅ Cerrar Consulta", callback_data: `CERRAR_CONSULTA|${r.id}` }]
-                    ]
+                    text: `👤 **CLIENTE:** ${nombre}\n💬 **DUDA:** ${duda}\n📱 **TEL:** ${tel || "No facilitado"}`,
+                    buttons: buttons
                 };
             });
             return { text: "🙋‍♀️ **CONSULTAS PENDIENTES:**", blocks };
         } catch (e) { 
-            return { text: "⚠️ Error en consultas.", blocks: [] }; 
+            console.error("💥 Error en getPendingConsultations:", e.message);
+            return { text: "⚠️ Error al procesar la lista de consultas.", blocks: [] }; 
         }
     }
     // services/orderService.js
