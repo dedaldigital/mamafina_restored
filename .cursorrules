@@ -1,0 +1,135 @@
+# 🧵 DEDAL DIGITAL — Reglas de Proyecto para Claude en Cursor
+
+## QUIÉN ERES
+Eres el desarrollador senior de **Dedal Digital**, una consultoría boutique que construye bots de Telegram inteligentes para pequeños negocios. Tu cliente actual es **Mamafina**, una mercería creativa.
+
+Trabajas con una fundadora no técnica. Tu comunicación debe ser:
+- Siempre en **español**
+- Sin jerga técnica innecesaria
+- Explicando brevemente QUÉ haces y POR QUÉ antes de tocar código
+- Pidiendo confirmación antes de cambios grandes
+
+---
+
+## EL PROYECTO: MAMASSISTANT
+
+### ¿Qué es?
+Un bot de Telegram con dos modos:
+- **Modo Admin** (`esAdmin = true`): Para la dueña del negocio (Mamafina). Gestiona inventario, pedidos, tareas, marketing, academia.
+- **Modo Cliente** (`esAdmin = false`): Para los clientes finales. Consultan pedidos, catálogo, horarios.
+
+### Stack técnico
+- **Runtime**: Node.js (JavaScript, CommonJS — usar `require`, NO `import`)
+- **Hosting**: Vercel (serverless functions)
+- **Base de datos**: Airtable (única fuente de verdad — SSOT)
+- **IA**: OpenAI GPT-4o (texto y visión)
+- **Imágenes**: ImgBB (subida y almacenamiento)
+- **Canal**: Telegram Bot API (webhooks)
+- **Dev local**: `vercel dev` + `localtunnel`
+
+### Estructura de archivos
+```
+api/
+  webhook.js          ← Cerebro central. Recibe TODO de Telegram y enruta.
+services/
+  airtableService.js  ← Todas las operaciones con Airtable
+  openaiService.js    ← Llamadas a GPT-4o (texto y visión)
+  inventoryService.js ← Lógica de inventario
+  orderService.js     ← Lógica de pedidos
+  taskService.js      ← Lógica de tareas
+  academiaService.js  ← Lógica de clases y alumnas
+  escaparateService.js← Catálogo para clientes finales
+  imgbbService.js     ← Subida de imágenes
+```
+
+---
+
+## REGLAS DE CÓDIGO — SIEMPRE SEGUIR
+
+### Estilo
+- Usar **CommonJS** (`require` / `module.exports`). NUNCA ES modules (`import/export`)
+- Comentarios en **español**
+- Nombres de funciones en **camelCase inglés** (ej. `getInventory`, `sendMessage`)
+- Nombres de variables de negocio en **español** (ej. `pedido`, `alumna`, `tarea`)
+- Emojis en los `console.log` para identificar bloques (ya existe esta convención, mantenerla)
+
+### Patrones establecidos
+- El flujo principal está en `webhook.js` dividido en dos bloques:
+  - **Bloque A**: `callback_query` (botones pulsados)
+  - **Bloque B**: `message` (mensajes de texto)
+- Toda llamada a Airtable va a través de `airtableService.js` — NUNCA llamar a Airtable directamente desde `webhook.js`
+- Toda llamada a OpenAI va a través de `openaiService.js`
+- El admin se identifica así: `const esAdmin = (user.toLowerCase() === 'paxsurgam' || userId === 8737137125)`
+
+### Manejo de errores
+- SIEMPRE envolver operaciones async en try/catch
+- En caso de error, enviar mensaje al usuario: `await enviarMensajeSimple(chatId, '⚠️ Error técnico: ...')`
+- SIEMPRE hacer `return res.status(200).json({ ok: true })` al final de cada bloque (Telegram necesita 200 siempre)
+
+### Vercel Serverless
+- Exportar handler así: `module.exports = async function handler(req, res)`
+- NO usar `app.listen()` ni Express — esto es serverless
+- Variables de entorno con `process.env.NOMBRE_VARIABLE`
+
+---
+
+## MÓDULOS ACTIVOS EN MAMAFINA
+
+| Módulo | Archivo | Estado |
+|--------|---------|--------|
+| Inventario | inventoryService.js | Activo |
+| Pedidos | orderService.js | Activo |
+| Tareas | taskService.js | Activo |
+| Academia | academiaService.js | Activo |
+| Catálogo cliente | escaparateService.js | Activo |
+| Marketing | webhook.js (inline) | Pendiente modularizar |
+| Laboratorio (bocetos IA) | webhook.js (inline) | Pendiente modularizar |
+| Buenos Días | webhook.js (inline) | Activo |
+
+---
+
+## CÓMO TRABAJAR EN ESTE PROYECTO
+
+### Antes de tocar código
+1. Leer el bloque relevante de `webhook.js` para entender el contexto
+2. Identificar qué service está involucrado
+3. Explicar el plan en español antes de escribir nada
+
+### Al modularizar
+- Extraer lógica de `webhook.js` a su service correspondiente
+- Mantener en `webhook.js` solo el enrutamiento (if/else con callback_data)
+- Exportar funciones así: `module.exports = { nombreFuncion }`
+
+### Al arreglar bugs
+- Identificar primero si el error es en el webhook (enrutamiento) o en el service (lógica)
+- No reescribir lo que funciona — arreglar solo lo que está roto
+- Testear mentalmente el flujo completo antes de proponer cambios
+
+### Variables de entorno necesarias
+```
+TELEGRAM_BOT_TOKEN
+OPENAI_API_KEY
+AIRTABLE_API_KEY
+AIRTABLE_BASE_ID
+IMGBB_API_KEY
+```
+
+---
+
+## LO QUE NO DEBES HACER NUNCA
+- ❌ Reescribir `webhook.js` entero de golpe
+- ❌ Cambiar de CommonJS a ES modules
+- ❌ Llamar a APIs externas directamente desde `webhook.js`
+- ❌ Eliminar los `return res.status(200)` intermedios
+- ❌ Hacer cambios grandes sin explicarlos primero
+- ❌ Asumir que algo funciona sin leerlo primero
+
+---
+
+## CONTEXTO DE NEGOCIO
+
+**Dedal Digital** construye este tipo de bots para pequeños negocios. Mamafina es el cliente piloto (Beta). El objetivo es que este código sea la base replicable para otros sectores.
+
+**Mamafina** es una mercería creativa. Su bot tiene personalidad cálida y cercana. Los mensajes al cliente usan emojis y tono amigable. La dueña se llama Mamafina y gestiona el bot desde Telegram.
+
+**Prioridad actual**: Estabilizar lo que existe antes de añadir funciones nuevas.

@@ -19,7 +19,8 @@ class AirtableService {
             registros: process.env.AT_TABLE_REGISTROS,
             consultas: process.env.AT_TABLE_CONSULTAS || 'Consultas',
             academia: process.env.AT_TABLE_ALUMNAS, // Arreglado: ALUMNAS
-            clases: process.env.AT_TABLE_CLASES || 'Gestion_Clases'
+            clases: process.env.AT_TABLE_CLASES || 'Gestion_Clases',
+            espera: process.env.AT_TABLE_LISTA_ESPERA
         };
     }
 
@@ -82,6 +83,39 @@ class AirtableService {
         }
 
         //FUNCIONES PEDIDOS
+
+        async iniciarBorradorPedido(chatId) {
+            try {
+                // 1. Por seguridad, comprobamos si ya hay un borrador a medias
+                const borradorExistente = await this.obtenerBorradorActivo(chatId);
+                if (borradorExistente) return borradorExistente;
+
+                // 2. Si el lienzo está en blanco, creamos el registro inicial
+                const record = await this.base(this.t.pedidos).create([{
+                    fields: {
+                        "ID_Sesion": String(chatId),
+                        "Estado": "📝 Borrador"
+                    }
+                }]);
+                return { id: record[0].id, ...record[0].fields };
+            } catch (e) {
+                this._logError(e, 'iniciarBorradorPedido');
+                return null;
+            }
+        }
+              
+        async cancelarBorradorPedido(chatId) {
+            try {
+                const borrador = await this.obtenerBorradorActivo(chatId);
+                if (borrador) {
+                    await this.base(this.t.pedidos).destroy(borrador.id);
+                    return true;
+                }
+                return false;
+            } catch (e) { this._logError(e, 'cancelarBorradorPedido'); }
+        }
+        
+
         async vaciarPedidosCompletados() {
             try {
                 // 1. Buscamos pedidos que ya estén entregados
@@ -124,16 +158,6 @@ class AirtableService {
         }
 
 
-        async iniciarBorradorPedido(chatId) {
-            try {
-                // ✨ CORRECCIÓN: Usamos [0] para devolver el registro creado, no el array
-                const records = await this.base(this.t.pedidos).create([{
-                    fields: { "Estado": "📝 Borrador", "ID_Sesion": String(chatId) }
-                }]);
-                return records[0]; 
-            } catch (e) { this._logError(e, 'iniciarBorradorPedido'); }
-        }
-
         async obtenerBorradorActivo(chatId) {
             try {
                 const records = await this.base(this.t.pedidos).select({
@@ -143,32 +167,6 @@ class AirtableService {
                 return records.length > 0 ? records[0] : null;
             } catch (e) { this._logError(e, 'obtenerBorradorActivo'); }
         }
-
-        async obtenerFichaAlumna(chatId) {
-            try {
-                // Buscamos en la tabla de Alumnas (TB-11)
-                // Importante: El Telegram_ID en Airtable debe ser tipo Texto para evitar errores de formato
-                const records = await this.base(process.env.AT_TABLE_ALUMNAS).select({
-                    filterByFormula: `{Telegram_ID} = '${String(chatId)}'`,
-                    maxRecords: 1
-                }).firstPage();
-        
-                if (records && records.length > 0) {
-                    // Devolvemos el objeto con el ID de Airtable (record.id) y sus campos
-                    return {
-                        id: records[0].id,
-                        ...records[0].fields
-                    };
-                }
-        
-                // Si no existe, devolvemos null para que el Service sepa que debe crear una
-                return null;
-            } catch (error) {
-                console.error("💥 Error en airtableService.obtenerFichaAlumna:", error.message);
-                throw error; // Lanzamos el error para que el pararrayos del Webhook lo capture
-            }
-        }
-
 
         async actualizarEstadoPedido(idPedido, datos, tablaKey = 'pedidos') {
             try {
@@ -182,18 +180,8 @@ class AirtableService {
                 throw e;
             }
         }
-
-        async cancelarBorradorPedido(chatId) {
-            try {
-                const borrador = await this.obtenerBorradorActivo(chatId);
-                if (borrador) {
-                    await this.base(this.t.pedidos).destroy(borrador.id);
-                    return true;
-                }
-                return false;
-            } catch (e) { this._logError(e, 'cancelarBorradorPedido'); }
-        }
-
+        
+        
         // INVENTARIO Y REGISTROS 
 
         
@@ -278,6 +266,25 @@ class AirtableService {
             console.error(`[API ERROR] ${method}:`, error.message);
             throw error;
         }
+
+        async obtenerFichaAlumna(chatId) {
+            try {
+                const records = await this.base(this.t.academia).select({
+                    filterByFormula: `{Telegram_ID} = '${String(chatId)}'`,
+                    maxRecords: 1
+                }).firstPage();
+        
+                if (records && records.length > 0) {
+                    return { id: records[0].id, ...records[0].fields };
+                }
+                return null;
+            } catch (error) {
+                this._logError(error, 'obtenerFichaAlumna');
+            }
+        }
+
+
+ 
 
 
         // VISUALIZADOR
@@ -364,7 +371,6 @@ class AirtableService {
             }]);
         }
 
-
         async obtenerBorradorDiseno(chatId) {
             try {
                 // Buscamos en TB-04 el diseño que coincida con el chat actual
@@ -380,16 +386,18 @@ class AirtableService {
             }
         }
 
-        
 
-        // CONSULTAS
+        // CONSULTAS (ADMIN)
 
         async obtenerTodasLasConsultas() {
             try {
                 const records = await this.base(this.t.consultas).select().all();
                 return records.map(r => ({
-                    nombre: r.fields["Nombre/ID"] || "Sin nombre",
-                    tel: r.fields.Telefono || ""
+                    nombre: r.fields.Nombre_Cliente || "Sin nombre",
+                    tel: r.fields.Telefono || "",
+                    consulta: r.fields.Consulta || "",
+                    estado: r.fields.Estado || "",
+                    created: r.fields.Created || null
                 }));
             } catch (e) { return []; }
         }
@@ -397,17 +405,18 @@ class AirtableService {
         // Obtener datos de la tabla 'Consultas'
         async obtenerConsultasPendientes() {
             // 1. Pedimos los registros a Airtable
-            const registros = await this.base('Consultas').select({
+            const registros = await this.base(this.t.consultas).select({
                 filterByFormula: "{Estado} != 'Cerrada'"
             }).all();
-        
+
             // 2. Aquí es donde "atrapamos" el ID invisible (record.id)
             return registros.map(record => ({
-                id: record.id,      // <--- ESTA ES LA CLAVE. No es una columna, es una propiedad del objeto record.
+                id: record.id,
                 nombre: record.fields.Nombre_Cliente,
                 duda: record.fields.Consulta,
                 tel: record.fields.Telefono,
-                fecha: record.fields.Fecha
+                estado: record.fields.Estado,
+                created: record.fields.Created || null
             }));
         }
 
@@ -525,18 +534,50 @@ class AirtableService {
         }
     }
 
+
+
     async guardarConsultaFinal(metadata) {
         try {
-            return await this.base(this.t.consultas).create([{
-                fields: {
-                    "Nombre_Cliente": metadata.nombreCliente,
-                    "Telefono": metadata.telefono, // ✨ Ahora sí llegará con datos
-                    "Consulta": metadata.mensajeConsulta,
+            const nombreFinal = metadata.nombreCliente || metadata.nombreReal || "Cliente Desconocido";
+    
+            if (metadata.idClase || metadata.tipoClase) {
+                const tipoLimpio = (metadata.tipoClase || "").replace(/[🧵🧶]/g, '').trim();
+                
+                const camposLista = {
+                    "Nombre_Interesada": nombreFinal,
+                    "Telefono": metadata.telefono || "600000000",
+                    "Disciplina": tipoLimpio,
+                    "Estado": "Pendiente",
+                    // Forzamos el vínculo como Array para activar la relación bidireccional
+                    "Clase_Deseada": metadata.idClase ? [metadata.idClase] : []
+                };
+    
+                console.log("📡 [AIRTABLE] Intentando crear interés para:", nombreFinal);
+                return await this.base(this.t.espera).create([{ fields: camposLista }]);
+            }
+            // Rama de consultas generales (sin idClase ni tipoClase)
+            else {
+                const camposConsulta = {
+                    "Nombre_Cliente": metadata.nombreCliente || "Cliente Desconocido",
+                    "Telefono": metadata.telefono || "",
+                    "Consulta": metadata.mensajeConsulta || "Sin mensaje",
                     "Estado": "Pendiente"
-                }
-            }]);
+                };
+
+                return await this.base(this.t.consultas).create([{ fields: camposConsulta }]);
+            }
         } catch (e) {
-            console.error("💥 Error en Airtable:", e.message);
+            console.error("💥 [AIRTABLE ERROR]:", e.message);
+            throw e;
+        }
+    }
+    
+  
+    async actualizarPatronAlumna(idRecord, datos) {
+        try {
+            return await this.base(this.t.academia).update(idRecord, datos);
+        } catch (e) {
+            this._logError(e, 'actualizarPatronAlumna');
         }
     }
 
@@ -544,12 +585,9 @@ class AirtableService {
         try {
             await this.base(this.t.consultas).create([{
                 fields: {
-                    "ID_Sesion": String(chatId),
-                    "Nombre/ID": usuario || "Usuario Telegram",
+                    "Nombre_Cliente": usuario || "Usuario Telegram",
                     "Consulta": `Interés detectado: ${tipo}`,
-                    // 💡 IMPORTANTE: Usa aquí un estado que YA TENGAS en tu desplegable de Airtable.
-                    // Si no estás segura, ponlo exactamente como esté en tu tabla (ej: "Pendiente" o "Nuevo")
-                    "Estado": "Pendiente" 
+                    "Estado": "Pendiente"
                 }
             }]);
             console.log("✅ Intención de contacto guardada correctamente.");
@@ -563,12 +601,10 @@ class AirtableService {
         try {
             return await this.base(this.t.consultas).create([{
                 fields: {
-                    "ID_Sesion": String(chatId),
-                    "Nombre/ID": nombreCliente || username || "Cliente Conocido",
+                    "Nombre_Cliente": nombreCliente || username || "Cliente Conocido",
                     "Telefono": telefono,
                     "Consulta": `Seguimiento de pedido: "${detallePedido}"`,
-                    "Estado": "Pendiente",
-                    "User_Telegram": username
+                    "Estado": "Pendiente"
                 }
             }]);
         } catch (e) {
@@ -625,58 +661,105 @@ class AirtableService {
 
     async crearFichaBasica(chatId, username, idUnico) {
         try {
-            // Usamos this.t.academia que viene de AT_TABLE_ALUMNAS
             return await this.base(this.t.academia).create([{
                 fields: {
                     "Telegram_ID": String(chatId),
-                    "ID_Alumna_Unico": idUnico, // Pasamos el #ALU-XXXX generado
+                    "ID_Alumna_Unico": idUnico,
                     "User_Telegram": username || "",
                     "Nombre_Real": "Pendiente",
                     "Notas_Tecnicas": "Ficha iniciada desde el Bot. ✨"
                 }
             }]);
         } catch (e) {
-            console.error("💥 Error en crearFichaBasica:", e.message);
+            this._logError(e, 'crearFichaBasica');
+        }
+    }
+
+  
+    async obtenerBorradorAcademia(chatId) {
+        try {
+            // Buscamos si la alumna tiene su nombre temporalmente como "📝 Borrador"
+            const records = await this.base(this.t.academia).select({
+                filterByFormula: `AND({Telegram_ID} = '${String(chatId)}', {Nombre_Real} = '📝 Borrador')`,
+                maxRecords: 1
+            }).firstPage();
+
+            if (records.length > 0) {
+                return { id: records[0].id, ...records[0].fields };
+            }
+            return null;
+        } catch (e) { 
+            console.error("💥 Error en obtenerBorradorAcademia:", e.message); 
             return null;
         }
     }
 
     async iniciarBorradorAlumna(chatId) {
         try {
-            const records = await this.base(this.t.academia).create([{
-                fields: { 
-                    "Nombre_Real": "📝 Borrador", // Marcamos como borrador temporal
-                    "Telegram_ID": String(chatId)
-                }
-            }]);
-            return records[0]; 
-        } catch (e) { this._logError(e, 'iniciarBorradorAlumna'); }
+            const record = await this.obtenerFichaAlumna(chatId);
+            if (record) {
+                await this.base(this.t.academia).update(record.id, {
+                    "Nombre_Real": "📝 Borrador",
+                    "Nombre_Real_Guardado": record.Nombre_Real || "" 
+                });
+                return { id: record.id };
+            }
+            return null;
+        } catch (e) {
+            this._logError(e, 'iniciarBorradorAlumna');
+        }
+    
     }
 
-    async obtenerBorradorAcademia(chatId) {
+
+    async obtenerInteresadasClase(idClase) {
+        console.log("🚀 [ACADEMIA] Buscando interesadas para ID:", idClase);
+        
         try {
-            // Buscamos un registro donde el ID de Telegram coincida y el Nombre_Real sea "📝 Borrador"
-            const records = await this.base(this.t.academia).select({
-                filterByFormula: `AND({Nombre_Real} = '📝 Borrador', {Telegram_ID} = '${chatId}')`,
-                maxRecords: 1
-            }).firstPage();
-    
-            return records.length > 0 ? records[0] : null;
+            // 1. Obtenemos el nombre de la clase para tener una doble vía de búsqueda
+            const claseDoc = await airtableService.base(airtableService.t.clases).find(idClase);
+            const nombreClase = claseDoc.fields.Nombre_Clase;
+
+            // 2. FÓRMULA MAESTRA DUAL:
+            // Busca el ID (rec...) O busca el Nombre exacto del texto.
+            const formula = `AND(
+                OR(
+                    SEARCH('${idClase}', {Clase_Deseada}) > 0,
+                    SEARCH('${nombreClase}', {Clase_Deseada}) > 0
+                ),
+                OR({Estado} = 'Pendiente', {Estado} = 'Avisada')
+            )`;
+
+            console.log("🔍 [DEBUG] Nueva fórmula dual:", formula);
+
+            const registros = await airtableService.base(airtableService.t.espera).select({
+                filterByFormula: formula,
+                sort: [{ field: "Fecha_Registro", direction: "asc" }] 
+            }).all();
+
+            console.log(`📊 [RESULTADO] Se han encontrado ${registros.length} personas.`);
+
+            if (!registros || registros.length === 0) {
+                return { text: `✅ No hay interesadas pendientes para **${nombreClase}**.` };
+            }
+
+            const blocks = await Promise.all(registros.map(async (reg) => {
+                const f = reg.fields;
+                const mensajeWA = `¡Hola ${f.Nombre_Interesada}! ✨ Soy Reyes de Mamafina. Tengo un hueco libre en la clase de ${nombreClase}. ¿Te apunto?`; 
+                const linkWA = await escaparateService.formatearLinkWA(f.Telefono, f.Nombre_Interesada, mensajeWA); 
+
+                return {
+                    text: `🆕 **${f.Nombre_Interesada}**\n📞 ${f.Telefono}\n📝 Estado: ${f.Estado}`,
+                    buttons: [[{ text: "📲 WhatsApp", url: linkWA }]]
+                };
+            }));
+
+            return { text: `📋 **Lista de espera para ${nombreClase}:**`, blocks };
+
         } catch (e) {
-            this._logError(e, 'obtenerBorradorAcademia');
-            return null;
-        }
-    }
-    
-    async actualizarPatronAlumna(idRecord, datos) {
-        try {
-            // datos será { "Patron_PDF": [...] } o { "Link_Patron": "..." }
-            return await this.base(this.t.academia).update(idRecord, datos);
-        } catch (e) {
-            console.error("💥 Error en actualizarPatronAlumna:", e.message);
-            return null;
+            console.error("💥 [ERROR] academiaService:", e.message);
+            return { text: "⚠️ Error técnico al consultar la lista. Revisa la terminal." };
         }
     }
 }
-
 module.exports = new AirtableService();

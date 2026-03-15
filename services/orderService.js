@@ -186,8 +186,7 @@ class OrderService {
 
    async closeConsultation(idConsulta) {
         try {
-            // Forzamos el nombre de la tabla como texto para evitar fallos de variables
-            await airtableService.base('Consultas').update(idConsulta, {
+            await airtableService.base(airtableService.t.consultas).update(idConsulta, {
                 "Estado": "Cerrada"
             });
             return "✅ **Consulta atendida.** ¡Un hilo menos!";

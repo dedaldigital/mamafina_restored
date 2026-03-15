@@ -1,8 +1,7 @@
-// GESTIÓN DE HORARIO
+// GESTIÓN DE HORARIO Y ESCAPARATE
 
 class EscaparateService {
-    //Determina si la tienda física está abierta según el horario oficial
-
+    // 1. Determina si la tienda física está abierta
     estaLaTiendaAbierta() {
         const ahora = new Date().toLocaleString("en-US", {timeZone: "Europe/Madrid"});
         const fechaEsp = new Date(ahora);
@@ -23,11 +22,10 @@ class EscaparateService {
         return false;
     }
 
-    //Genera la botonera principal dinámica según el estado de apertura
-     
-     
+    // 2. Genera la botonera principal
     obtenerBotonesMenuPrincipal() {
-        const abierta = this.estaLaTiendaAbierta();
+        // Usamos 'this' porque estamos DENTRO de la clase instanciada
+        const abierta = this.estaLaTiendaAbierta(); 
         return [
             [{ text: "🎓 Clases de Costura", callback_data: "CLI_ACADEMIA" }],
             [{ text: abierta ? "📲 Hablar con nosotras (Abierto)" : "🙋 Dejar consulta", callback_data: "CLI_INTERESADO" }],
@@ -37,9 +35,7 @@ class EscaparateService {
         ];
     }
 
-    //Retorna el texto formateado con los detalles del horario
-     
-     
+    // 3. Retorna el texto del horario (¡Con el return recuperado!)
     obtenerTextoHorario() {
         return `📍 **Nuestro horario es:**\n` +
                `• **Lun, Mar, Jue y Vie:** 10:00h - 14:00h y 17:00h - 20:00h\n` +
@@ -47,108 +43,108 @@ class EscaparateService {
                `• **Domingos:** Cerrado 🧵`;
     }
 
+    // 4. Busca pedidos por Ticket (¡Con el async recuperado!)
+    async buscarPedidoPorTicket(textoUsuario, airtableService) {
+        if (!textoUsuario) return null;
 
-// Procesa la búsqueda de pedidos filtrando por número ID de pedido
-
-// services/escaparateService.js
-
-async buscarPedidoPorTicket(textoUsuario, airtableService) {
-    if (!textoUsuario) return null;
-
-    // 1. Limpiamos el texto
-    let busqueda = textoUsuario.trim();
-    
-    // 2. Si ya es un ID de Airtable (empieza por 'rec'), no le ponemos #REF-
-    let formula = "";
-    if (busqueda.startsWith('rec')) {
-        // Buscamos directamente por RECORD_ID() en Airtable
-        formula = `RECORD_ID() = '${busqueda}'`;
-    } else {
-        // Es un ticket manual (ej: 1234 o #REF-1234)
-        const soloNumeros = busqueda.toUpperCase().replace(/#REF-/g, "").trim();
-        const ticketExacto = `#REF-${soloNumeros}`;
-        formula = `{ID_Pedido_Unico} = '${ticketExacto}'`;
-    }
-
-    try {
-        console.log(`🔎 Ejecutando fórmula en Airtable: ${formula}`);
-        const registros = await airtableService.base(airtableService.t.pedidos).select({
-            filterByFormula: formula,
-            maxRecords: 1
-        }).all();
-
-        if (registros && registros.length > 0) {
-            const r = registros[0];
-            return {
-                id: r.id,
-                detalle: r.fields.Pedido_Detalle,
-                estado: r.fields.Estado,
-                nombre: r.fields.Nombre_Cliente
-            };
-        }
-        return null;
-    } catch (e) {
-        console.error("❌ Error en búsqueda fallback:", e);
-        return null;
-    }
-}
-// Formatea el mensaje de estado de un pedido para la clienta
-
-formatearMensajePedido(pedido, indice) {
-    return `🧵 **Encargo #${indice + 1}**\n` +
-           `📦 **Detalle:** ${pedido.detalle}\n` +
-           `📌 **Estado:** ${pedido.estado}\n` +
-           `📅 **Entrega:** ${pedido.entrega}`;
-}
-
-// Generador de WhatsApp 
-     
-async formatearLinkWA(telefono, nombre, mensajeBase, ticketId = "") {
-    if (!telefono) return null;
-    let telLimpio = String(telefono).replace(/[^0-9]/g, ''); 
-    if (telLimpio.length === 9) telLimpio = '34' + telLimpio; 
-    
-    // Reemplazamos tanto el nombre como la referencia si existen en la plantilla
-    let textoFinal = mensajeBase
-        .replace('{nombre}', nombre || 'cliente')
-        .replace('{ticket}', ticketId || ''); // Inyectamos el #REF aquí
+        let busqueda = textoUsuario.trim();
+        let formula = "";
         
-    const textoWA = encodeURIComponent(textoFinal);
-    return `https://wa.me/${telLimpio}?text=${textoWA}`;
-}
+        if (busqueda.startsWith('rec')) {
+            formula = `RECORD_ID() = '${busqueda}'`;
+        } else {
+            const soloNumeros = busqueda.toUpperCase().replace(/#REF-/g, "").trim();
+            const ticketExacto = `#REF-${soloNumeros}`;
+            formula = `{ID_Pedido_Unico} = '${ticketExacto}'`;
+        }
 
-//Gestiona el flujo de la consulta (Duda -> Nombre -> Teléfono)
-   
-     
-async handleConsultationWorkflow(textoRecibido, metadata) {
-    let result = { text: "", step: "", isFinal: false, meta: metadata };
+        try {
+            console.log(`🔎 Ejecutando fórmula en Airtable: ${formula}`);
+            const registros = await airtableService.base(airtableService.t.pedidos).select({
+                filterByFormula: formula,
+                maxRecords: 1
+            }).all();
 
-    if (metadata.step === "ESP_CONSULTA") {
-        result.meta.mensajeConsulta = textoRecibido; 
-        result.meta.step = "ESP_NOMBRE";
-        result.text = `📝 Anotado. ¿A nombre de quién pongo la consulta, primor?`;
-    }
-    else if (metadata.step === "ESP_NOMBRE") {
-        result.meta.nombreCliente = textoRecibido;
-        result.meta.step = "ESP_TELEFONO";
-        result.text = `🏷️ Muy bien, **${textoRecibido}**. \n¿A qué número de **Teléfono** podemos contactarte?`;
-    } 
-    else if (metadata.step === "ESP_TELEFONO") {
-        // Busca este trozo en escaparateService.js
-        if (metadata.step === "ESP_TELEFONO") {
-            // 1. GUARDAMOS EL DATO (Esto es lo que faltaba)
-            result.meta.telefono = textoRecibido; 
-            
-            // 2. Marcamos como final
-            result.isFinal = true;
-            result.text = `✅ ¡Perfecto! He anotado todo. Enseguida te atenderemos. ✨`;
+            if (registros && registros.length > 0) {
+                const r = registros[0];
+                return {
+                    id: r.id,
+                    detalle: r.fields.Pedido_Detalle,
+                    estado: r.fields.Estado,
+                    nombre: r.fields.Nombre_Cliente
+                };
+            }
+            return null;
+        } catch (e) {
+            console.error("❌ Error en búsqueda fallback:", e);
+            return null;
         }
     }
 
-    return result;
-}
+    // 5. Formatea el mensaje del estado
+    formatearMensajePedido(pedido, indice) {
+        return `🧵 **Encargo #${indice + 1}**\n` +
+               `📦 **Detalle:** ${pedido.detalle}\n` +
+               `📌 **Estado:** ${pedido.estado}\n` +
+               `📅 **Entrega:** ${pedido.entrega}`;
+    }
+
+    // 6. Gestiona las consultas e intereses de academia (¡Con el async y la fusión!)
+    async handleConsultationWorkflow(textoRecibido, metadata) {
+        let result = { text: "", step: "", isFinal: false, meta: metadata };
+
+        if (!metadata || !metadata.step) return result;
+
+        if (metadata.step === "ESP_CONSULTA") {
+            result.meta.mensajeConsulta = textoRecibido; 
+            result.meta.step = "ESP_NOMBRE";
+            result.text = `📝 Anotado. ¿A nombre de quién pongo la consulta, primor?`;
+        }
+        else if (metadata.step === "ESP_NOMBRE" || metadata.step === "ESP_NOMBRE_INTERESADA") {
+            result.meta.nombreCliente = textoRecibido;
+            result.meta.step = metadata.step === "ESP_NOMBRE_INTERESADA" ? "ESP_TEL_INTERESADA" : "ESP_TELEFONO";
+            result.text = `🏷️ Muy bien, **${textoRecibido}**. \n¿A qué número de **Teléfono** podemos contactarte?`;
+        } 
+        else if (metadata.step === "ESP_TELEFONO" || metadata.step === "ESP_TEL_INTERESADA") {
+            result.meta.telefono = textoRecibido; 
+            result.isFinal = true;
+            
+            if (metadata.step === "ESP_TEL_INTERESADA") {
+                result.meta.idClase = metadata.idClase; 
+                const tipoLimpio = (metadata.tipoClase || "").replace(/[🧵🧶]/g, '').trim();
+                
+                result.meta.tipoInteres = tipoLimpio; 
+                result.meta.mensajeConsulta = `Interés en clase de ${tipoLimpio}`;
+                result.text = `✅ ¡Perfecto, corazón! He anotado tu interés en la clase de **${metadata.tipoClase}**. Reyes te avisará en cuanto haya un hueco libre. ✨`;
+            } else {
+                result.text = `✅ ¡Perfecto! He anotado todo. Enseguida te atenderemos. ✨`;
+            }
+        }
+        return result;
+    }
+
+    // 7. Generador de link de WhatsApp (¡Con el async, limpieza de teléfono y tickets!)
+    async formatearLinkWA(telefono, nombre, mensajeBase, ticketId = "") {
+        if (!telefono) return null;
+        
+        let telLimpio = String(telefono).replace(/[^0-9]/g, ''); 
+        
+        if (telLimpio.startsWith('0') && !telLimpio.startsWith('00')) {
+            telLimpio = telLimpio.substring(1);
+        }
+        
+        if (telLimpio.length === 9 && /^[67]/.test(telLimpio)) {
+            telLimpio = '34' + telLimpio;
+        }
+
+        let textoFinal = mensajeBase
+            .replace('{nombre}', nombre || 'cliente')
+            .replace('{ticket}', ticketId || ''); 
+            
+        const textoWA = encodeURIComponent(textoFinal);
+        return `https://wa.me/${telLimpio}?text=${textoWA}`;
+    }
 }
 
-
+// ✨ ¡LA LÍNEA QUE LO CONECTA TODO AL WEBHOOK!
 module.exports = new EscaparateService();
-

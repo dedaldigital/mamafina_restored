@@ -14,20 +14,23 @@ class InventoryService {
             }
 
             const blocks = resultados.map(r => {
-                const nombre = r.fields?.Articulo || "Sin nombre";
+                // Limpiamos el nombre de caracteres que rompen el Markdown
+                const nombreLimpio = (r.fields?.Articulo || "Sin nombre").replace(/[_*`]/g, '');
                 const stock = r.fields?.Stock ?? 0;
                 const tipoEmoji = r.tipo || "📦";
-                // Recuperamos tu lógica de la Referencia
                 const referencia = r.fields?.Referencia ? `\n🆔 Ref: \`${r.fields.Referencia}\`` : "";
                 
-                const tablaKey = r.tipo.includes('Tela') ? 'telas' : 
-                                r.tipo.includes('Producto') ? 'productos' : 'inventario';
+                // Simplificamos la tablaKey para que el callback_data sea corto
+                const tipoSeguro = r.tipo || "";
+                const tablaKey = tipoSeguro.includes('Tela') ? 'telas' : 
+                                 tipoSeguro.includes('Producto') ? 'productos' : 'inventario';
 
                 return {
-                    text: `${tipoEmoji}\n📦 *${nombre}*${referencia}\n🔹 Cantidad: **${stock}**`,
+                    text: `${tipoEmoji}\n📦 *${nombreLimpio}*${referencia}\n🔹 Cantidad: **${stock}**`,
                     buttons: [[{ 
                         text: "🛒 Registrar Venta", 
-                        callback_data: `INICIAR_VENTA|${r.id}|${nombre}|${tablaKey}` 
+                        // QUITAMOS el nombre del callback_data para evitar el error de espacios
+                        callback_data: `INICIAR_VENTA|${r.id}|${tablaKey}` 
                     }]]
                 };
             });
@@ -40,20 +43,32 @@ class InventoryService {
     }
 
     // 2. Prepara el flujo de venta (Pide la cantidad)
-    // services/inventoryService.js
     async prepareSale(data) {
-        // data viene como: "INICIAR_VENTA|ID_AIRTABLE|NOMBRE|TABLA"
+        // Ahora data viene solo con 3 partes: "INICIAR_VENTA|ID|TABLA"
         const partes = data.split('|');
         const id = partes[1];
-        const nombre = partes[2];
-        const tabla = partes[3];
+        const tabla = partes[2]; // <-- Antes era partes[3]
 
-        return {
-            text: `✍️ ¿Cuántas unidades vendidas de: *${nombre}*?\n\n(Responde solo el número. ID:${id}|TABLA:${tabla})`,
-            forceReply: true
-        };
+        try {
+            // Buscamos el nombre real en Airtable para que el mensaje sea claro
+            // Usamos el mapeo de tablas que tienes en airtableService
+            const tablaId = airtableService.t[tabla];
+            const registro = await airtableService.base(tablaId).find(id);
+            const nombre = registro.fields.Articulo || "Artículo";
+
+            return {
+                text: `✍️ ¿Cuántas unidades vendidas de: *${nombre}*?\n\n(Responde solo el número. ID:${id}|TABLA:${tabla})`,
+                forceReply: true
+            };
+        } catch (e) {
+            console.error("💥 Error buscando nombre en prepareSale:", e.message);
+            // Si falla la búsqueda, enviamos un mensaje genérico pero con los IDs correctos
+            return {
+                text: `✍️ ¿Cuántas unidades se han vendido?\n\n(Responde solo el número. ID:${id}|TABLA:${tabla})`,
+                forceReply: true
+            };
+        }
     }
-
     // 3. Ejecuta la venta en Airtable (Descuento de stock)
     async executeSale(replyText, unitsText, user) {
         const matchId = replyText.match(/ID:([^|]+)/);
