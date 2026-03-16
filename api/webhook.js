@@ -108,41 +108,57 @@ module.exports = async function handler(req, res) {
 
             // MARKETING: Crear copy para Instagram
             else if (data === "MKT_CREAR_COPY") {
-
                 const marketingHabilitado = await airtableService.getConfigValue('modulo_marketing') === 'true';
                 if (!marketingHabilitado) {
                     await enviarMensajeSimple(chatId, "⭕ El módulo de marketing está desactivado. Actívalo con /modulos.");
                     return res.status(200).json({ ok: true });
                 }
-                
+
                 const sesion = await airtableService.obtenerSesion(chatId);
-                
                 if (!sesion || !sesion.metadata || !sesion.metadata.urlFoto) {
                     await enviarMensajeSimple(chatId, "⚠️ La sesión ha expirado. Vuelve a subir el trabajo para crear el copy.");
                     return res.status(200).json({ ok: true });
                 }
 
-                const { urlFoto, nombreProyecto } = sesion.metadata;
-                
-                await enviarMensajeSimple(chatId, "✍️ *Escribiendo el copy...*");
-                
+                await enviarMensajeSimple(chatId, "🔍 *Analizando la foto y el historial...*");
+
                 try {
                     const marketingService = require('../services/marketingService');
-                    const copy = await marketingService.generarCopyTrabajo(urlFoto, nombreProyecto);
-                    
-                    await airtableService.borrarSesion(chatId);
-                    
+                    const sugerencias = await marketingService.sugerirTipoPost(
+                        sesion.metadata.urlFoto,
+                        sesion.metadata.nombreProyecto
+                    );
+
+                    if (!sugerencias || sugerencias.length === 0) {
+                        // Sin sugerencias, pedimos que elija manualmente
+                        const tipos = await marketingService.obtenerTiposPost();
+                        const botones = tipos
+                            .filter(t => t.requiere !== 'gemini_imagen' && t.requiere !== 'manual')
+                            .slice(0, 10)
+                            .map(t => [{ text: t.nombre, callback_data: `MKT_TIPO_SEL|${t.nombre}` }]);
+                        botones.push([{ text: "❌ Cancelar", callback_data: "MKT_SKIP" }]);
+                        await enviarMensajeConBotones(chatId, "Elige el tipo de post:", botones);
+                        return res.status(200).json({ ok: true });
+                    }
+
+                    // Mostramos las 3 sugerencias de Gemini
+                    const botones = sugerencias.map(s => ([{
+                        text: `${s.nombre} — ${s.razon}`,
+                        callback_data: `MKT_TIPO_SEL|${s.nombre}`
+                    }]));
+                    botones.push([{ text: "📋 Ver todos los tipos", callback_data: "MKT_TIPO_LISTA" }]);
+                    botones.push([{ text: "❌ Cancelar", callback_data: "MKT_SKIP" }]);
+
                     await enviarMensajeConBotones(
                         chatId,
-                        `📲 *Copy para Instagram:*\n\n${copy}`,
-                        [[{ text: "🔄 Regenerar copy", callback_data: "MKT_REGEN_COPY" }]]
+                        `✨ *Sugerencias para este trabajo:*`,
+                        botones
                     );
                 } catch (e) {
-                    console.error("💥 Error generando copy:", e.message);
-                    await airtableService.borrarSesion(chatId);
-                    await enviarMensajeSimple(chatId, "⚠️ No he podido generar el copy ahora. Puedes pedirlo más tarde con /copy.");
+                    console.error("💥 Error en sugerencia de tipo:", e.message);
+                    await enviarMensajeSimple(chatId, "⚠️ No he podido analizar el historial. Inténtalo de nuevo.");
                 }
-                
+
                 return res.status(200).json({ ok: true });
             }
 
@@ -153,33 +169,106 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
+            // MARKETING: tipo de post elegido — genera el copy
+            else if (data.startsWith("MKT_TIPO_SEL|")) {
+                const tipoElegido = data.split('|').slice(1).join('|');
+                const sesion = await airtableService.obtenerSesion(chatId);
+
+                if (!sesion || !sesion.metadata || !sesion.metadata.urlFoto) {
+                    await enviarMensajeSimple(chatId, "⚠️ La sesión ha expirado. Vuelve a subir el trabajo.");
+                    return res.status(200).json({ ok: true });
+                }
+
+                await enviarMensajeSimple(chatId, `✍️ *Escribiendo copy de tipo "${tipoElegido}"...*`);
+
+                try {
+                    const marketingService = require('../services/marketingService');
+                    const copy = await marketingService.generarCopyTrabajo(
+                        sesion.metadata.urlFoto,
+                        sesion.metadata.nombreProyecto,
+                        tipoElegido
+                    );
+
+                    await airtableService.guardarSesion(chatId, "MKT_COPY_LISTO", {
+                        ...sesion.metadata,
+                        tipoPost: tipoElegido
+                    });
+
+                    // Registramos el tipo usado en Trabajos_Realizados para el historial
+                    if (sesion.metadata.recordId) {
+                        await marketingService.registrarTipoPost(sesion.metadata.recordId, tipoElegido);
+                    }
+
+                    await enviarMensajeConBotones(
+                        chatId,
+                        `📲 *Copy para Instagram:*\n\n${copy}`,
+                        [
+                            [{ text: "🔄 Regenerar este tipo", callback_data: "MKT_REGEN_COPY" }],
+                            [{ text: "🔀 Cambiar tipo de post", callback_data: "MKT_CREAR_COPY" }]
+                        ]
+                    );
+                } catch (e) {
+                    console.error("💥 Error generando copy:", e.message);
+                    await airtableService.borrarSesion(chatId);
+                    await enviarMensajeSimple(chatId, "⚠️ No he podido generar el copy. Inténtalo de nuevo.");
+                }
+
+                return res.status(200).json({ ok: true });
+            }
+            // MARKETING: ver lista completa de tipos
+            else if (data === "MKT_TIPO_LISTA") {
+                try {
+                    const marketingService = require('../services/marketingService');
+                    const tipos = await marketingService.obtenerTiposPost();
+                    const disponibles = tipos.filter(t => t.requiere !== 'gemini_imagen' && t.requiere !== 'manual');
+
+                    const botones = disponibles.map(t => ([{
+                        text: t.nombre,
+                        callback_data: `MKT_TIPO_SEL|${t.nombre}`
+                    }]));
+                    botones.push([{ text: "❌ Cancelar", callback_data: "MKT_SKIP" }]);
+
+                    await enviarMensajeConBotones(chatId, "📋 *Elige el tipo de post:*", botones);
+                } catch (e) {
+                    console.error("💥 Error cargando lista de tipos:", e.message);
+                    await enviarMensajeSimple(chatId, "⚠️ No he podido cargar los tipos. Inténtalo de nuevo.");
+                }
+                return res.status(200).json({ ok: true });
+            }
+
             // MARKETING: Regenerar copy (misma foto, nuevo texto)
             else if (data === "MKT_REGEN_COPY") {
                 const sesion = await airtableService.obtenerSesion(chatId);
-                
+
                 if (!sesion || !sesion.metadata || !sesion.metadata.urlFoto) {
                     await enviarMensajeSimple(chatId, "⚠️ La sesión ha expirado. Vuelve a subir el trabajo para crear el copy.");
                     return res.status(200).json({ ok: true });
                 }
 
-                const { urlFoto, nombreProyecto } = sesion.metadata;
-                
-                await enviarMensajeSimple(chatId, "✍️ *Generando otra versión...*");
-                
+                const tipoPost = sesion.metadata.tipoPost || 'Trabajo terminado';
+                await enviarMensajeSimple(chatId, `✍️ *Generando otra versión de "${tipoPost}"...*`);
+
                 try {
                     const marketingService = require('../services/marketingService');
-                    const copy = await marketingService.generarCopyTrabajo(urlFoto, nombreProyecto);
-                    
+                    const copy = await marketingService.generarCopyTrabajo(
+                        sesion.metadata.urlFoto,
+                        sesion.metadata.nombreProyecto,
+                        tipoPost
+                    );
+
                     await enviarMensajeConBotones(
                         chatId,
                         `📲 *Copy para Instagram:*\n\n${copy}`,
-                        [[{ text: "🔄 Regenerar copy", callback_data: "MKT_REGEN_COPY" }]]
+                        [
+                            [{ text: "🔄 Regenerar este tipo", callback_data: "MKT_REGEN_COPY" }],
+                            [{ text: "🔀 Cambiar tipo de post", callback_data: "MKT_CREAR_COPY" }]
+                        ]
                     );
                 } catch (e) {
                     console.error("💥 Error regenerando copy:", e.message);
                     await enviarMensajeSimple(chatId, "⚠️ No he podido regenerar el copy. Inténtalo de nuevo.");
                 }
-                
+
                 return res.status(200).json({ ok: true });
             }
 
@@ -324,22 +413,22 @@ module.exports = async function handler(req, res) {
                     const urlFinal = await imgbbService.subirAFotoUsuario(urlTele);
             
                     // 2. Crear el registro en la nueva tabla de Airtable
-                    await airtableService.base('Trabajos_Realizados').create([{
+                    const nuevoRegistro = await airtableService.base('Trabajos_Realizados').create([{
                         fields: {
                             "Nombre_Proyecto": metadata.nombre,
                             "Categoria": categoria,
-                            "Foto_Final": [{ url: urlFinal }] // Airtable acepta objetos con URL en campos de adjunto
+                            "Foto_Final": [{ url: urlFinal }]
                         }
                     }]);
-            
                     // Guardamos la URL y el nombre en sesión ANTES de borrar
                     // para que el handler de marketing pueda recuperarlos
                     await airtableService.guardarSesion(chatId, "MKT_ESP_DECISION", {
                         urlFoto: urlFinal,
                         nombreProyecto: metadata.nombre,
-                        categoria: categoria
+                        categoria: categoria,
+                        recordId: nuevoRegistro[0].id
                     });
-
+    
                     await enviarMensajeConBotones(
                         chatId,
                         `✅ *¡Proyecto archivado con éxito!*\n🌟 *${metadata.nombre}* ya está en el catálogo de *${categoria}*.\n\n¿Quieres que te escriba el copy para Instagram?`,
