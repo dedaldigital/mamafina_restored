@@ -20,7 +20,8 @@ class AirtableService {
             consultas: process.env.AT_TABLE_CONSULTAS || 'Consultas',
             academia: process.env.AT_TABLE_ALUMNAS, // Arreglado: ALUMNAS
             clases: process.env.AT_TABLE_CLASES || 'Gestion_Clases',
-            espera: process.env.AT_TABLE_LISTA_ESPERA
+            espera: process.env.AT_TABLE_LISTA_ESPERA,
+            sesiones: 'tblsyXRclf6kTKIl6'
         };
     }
 
@@ -675,6 +676,31 @@ class AirtableService {
         }
     }
 
+    async generarSiguienteIDAlumna() {
+        try {
+            const records = await this.base(this.t.academia).select({
+                fields: ['ID_Alumna_Unico']
+            }).all();
+
+            if (!records || records.length === 0) return "#ALU-0001";
+
+            const numeros = records
+                .map(r => r.fields && r.fields.ID_Alumna_Unico)
+                .filter(Boolean)
+                .map(id => {
+                    const match = String(id).match(/#ALU-(\d+)/);
+                    return match ? parseInt(match[1], 10) : NaN;
+                })
+                .filter(n => !isNaN(n));
+
+            const max = numeros.length > 0 ? Math.max(...numeros) : 0;
+            const siguiente = max + 1;
+            return `#ALU-${String(siguiente).padStart(4, '0')}`;
+        } catch (e) {
+            throw e;
+        }
+    }
+
   
     async obtenerBorradorAcademia(chatId) {
         try {
@@ -697,18 +723,11 @@ class AirtableService {
     async iniciarBorradorAlumna(chatId) {
         try {
             const record = await this.obtenerFichaAlumna(chatId);
-            if (record) {
-                await this.base(this.t.academia).update(record.id, {
-                    "Nombre_Real": "📝 Borrador",
-                    "Nombre_Real_Guardado": record.Nombre_Real || "" 
-                });
-                return { id: record.id };
-            }
+            if (record) return { id: record.id };
             return null;
         } catch (e) {
             this._logError(e, 'iniciarBorradorAlumna');
         }
-    
     }
 
 
@@ -759,6 +778,70 @@ class AirtableService {
         } catch (e) {
             console.error("💥 [ERROR] academiaService:", e.message);
             return { text: "⚠️ Error técnico al consultar la lista. Revisa la terminal." };
+        }
+    }
+
+    // SESIONES DE ESTADO
+    async guardarSesion(chatId, step, metadata) {
+        try {
+            const existente = await this.base(this.t.sesiones).select({
+                filterByFormula: `{Chat_ID} = '${String(chatId)}'`,
+                maxRecords: 1
+            }).firstPage();
+
+            const campos = {
+                "Chat_ID": String(chatId),
+                "Step": step,
+                "Metadata": JSON.stringify(metadata)
+            };
+
+            if (existente.length > 0) {
+                await this.base(this.t.sesiones).update(existente[0].id, campos);
+            } else {
+                await this.base(this.t.sesiones).create([{ fields: campos }]);
+            }
+            return true;
+        } catch (e) {
+            console.error("💥 Error en guardarSesion:", e.message);
+            return false;
+        }
+    }
+
+    async obtenerSesion(chatId) {
+        try {
+            const records = await this.base(this.t.sesiones).select({
+                filterByFormula: `{Chat_ID} = '${String(chatId)}'`,
+                maxRecords: 1
+            }).firstPage();
+
+            if (records.length === 0) return null;
+
+            const r = records[0];
+            return {
+                id: r.id,
+                step: r.fields.Step || null,
+                metadata: r.fields.Metadata ? JSON.parse(r.fields.Metadata) : {}
+            };
+        } catch (e) {
+            console.error("💥 Error en obtenerSesion:", e.message);
+            return null;
+        }
+    }
+
+    async borrarSesion(chatId) {
+        try {
+            const records = await this.base(this.t.sesiones).select({
+                filterByFormula: `{Chat_ID} = '${String(chatId)}'`,
+                maxRecords: 1
+            }).firstPage();
+
+            if (records.length > 0) {
+                await this.base(this.t.sesiones).destroy(records[0].id);
+            }
+            return true;
+        } catch (e) {
+            console.error("💥 Error en borrarSesion:", e.message);
+            return false;
         }
     }
 }

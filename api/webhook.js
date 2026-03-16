@@ -10,6 +10,8 @@ const inventoryService = require('../services/inventoryService');
 const orderService = require('../services/orderService');
 const escaparateService = require('../services/escaparateService');
 const academiaService = require('../services/academiaService'); // 
+const studioService = require('../services/studioService');
+const photoService = require('../services/photoService');
 // 🎒 LA MOCHILA (Fuera del handler)
 let cacheFotos = {};
 
@@ -55,26 +57,16 @@ module.exports = async function handler(req, res) {
         
             if (data.startsWith("TELA_SEL|")) {
                 const shortId = data.split('|')[1];
-                const registrosTelas = await airtableService.base(airtableService.t.telas).select().all();
-                const tela = registrosTelas.find(r => r.id.endsWith(shortId));
-                
-            if (!tela) {
-                await enviarMensajeSimple(chatId, "❌ Tela no encontrada.");
+                try {
+                    await studioService.seleccionarTela(chatId, shortId);
+                    await airtableService.guardarSesion(chatId, "VIZ_ESP_PRODUCTO", {});
+                    await enviarMensajeConReply(chatId, `🧵 Tela elegida correctamente.\n\n¿Qué producto vamos a confeccionar?`);
+                } catch (e) {
+                    console.error("💥 Error en TELA_SEL:", e.message);
+                    await enviarMensajeSimple(chatId, "❌ Tela no encontrada.");
+                }
                 return res.status(200).json({ ok: true });
             }
-
-                // Creamos/Actualizamos el borrador en TB-04 con la tela elegida 
-                await airtableService.base(airtableService.t.disenos).create([{
-                    fields: { 
-                        "ID_Sesion": String(chatId), 
-                        "Tela_Relacionada": [tela.id] 
-                    }
-                }]);
-
-                await enviarMensajeConReply(chatId, `🧵 Tela elegida correctamente.\n\n¿Qué producto vamos a confeccionar?`);
-                return res.status(200).json({ ok: true });
-
-            } // CIERRA TELA_SEL
     
 
             // SELECCION DE PRODUCTO 🧹 FALTA LIMPIAR
@@ -82,194 +74,74 @@ module.exports = async function handler(req, res) {
                 const idProducto = data.split('|')[1];
                 try {
                     await enviarMensajeSimple(chatId, "⏳ **Extrayendo patrones y moldes...**");
-            
-                    const producto = await airtableService.base(airtableService.t.productos).find(idProducto);
-                    const borrador = await airtableService.obtenerBorradorDiseno(chatId);
-            
-                    if (!producto || !borrador) throw new Error("Datos no encontrados.");
-                    
-            
-                    // Extraemos prompts (Producto + Tela)
-                    const descProdIA = producto.fields.Prompt_Final || "a plain white garment";
-                    let descTelaIA = borrador.fields.Prompt_Tela_Lookup;
-            
-                    if (!descTelaIA && borrador.fields.Tela_Relacionada) {
-                        const idTela = borrador.fields.Tela_Relacionada[0];
-                        const registroTela = await airtableService.base(airtableService.t.telas).find(idTela);
-                        descTelaIA = registroTela.fields.Prompt_Final;
-                    }
-                    descTelaIA = descTelaIA || "minimalist repeating pattern";
-            
-                    // 2. EL PROMPT MAESTRO "BUENO" (Sincronizado con REGEN)
-                    const promptMaestro = `
-                    Isolated ecommerce product photo of ${descProdIA} on a pure white (#FFFFFF) seamless background.
-                    Perfect straight front view. 
-                    The product is centered and fully visible.
-                    Clean cutout-style product image with only the product visible.
-                    On the center of the product there is a small appliqué letter "R".
-                    The letter occupies about one third of the product width.
-                    The letter "R" itself is a piece of fabric cut exactly in the shape of the letter.
-                    The fabric is cut following the exact outline of the letter.
-                    There is NO square patch.
-                    There is NO rectangular patch.
-                    There is NO fabric panel behind the letter.
-                    The letter is made from printed fabric with this exact visual identity: ${descTelaIA}.
-                    The printed pattern appears only inside the shape of the letter.
-                    The letter is sewn directly onto the product with zigzag satin stitching following the outer contour of the letter.
-                    Minimalist ecommerce catalog image.
-                    `.trim();
-
+                    const resultado = await studioService.generarDiseno(chatId, idProducto);
                     await enviarMensajeSimple(chatId, "✨ **Mamafina está diseñando tu prenda...**");
-
-                    const imgTmp = await openaiService.generarImagenDiseno(promptMaestro);
-                    const urlF = await imgbbService.subirAFotoUsuario(imgTmp) || imgTmp;
-
-                    await airtableService.base(airtableService.t.disenos).update(borrador.id, { 
-                        "Imagen_Generada": urlF,
-                        "Prompt_Final": promptMaestro // ✨ Guardamos la memoria exacta
-                    });                        await enviarMensajeConBotones(chatId, "🎉 ¡Propuesta terminada!", [
-                        [{ text: "🖼️ Ver Alta Res", url: urlF }],
-                        [{ text: "🔄 Regenerar", callback_data: `REGEN|${borrador.id}|${idProducto}` }] // ✨ IDs unidos
-                    ])
-                                } catch (e) {
-                                    console.error("💥 Error en PROD_SEL:", e.message);
-                                    await enviarMensajeSimple(chatId, `⚠️ Error técnico: ${e.message}`);
-                                }
-                                return res.status(200).json({ ok: true });
-
-                } // CIERRE PROD_SEL
+                    await enviarMensajeConBotones(chatId, "🎉 ¡Propuesta terminada!", [
+                        [{ text: "🖼️ Ver Alta Res", url: resultado.urlFinal }],
+                        [{ text: "🔄 Regenerar", callback_data: `REGEN|${resultado.borradorId}|${resultado.idProducto}` }]
+                    ]);
+                } catch (e) {
+                    console.error("💥 Error en PROD_SEL:", e.message);
+                    await enviarMensajeSimple(chatId, `⚠️ Error técnico: ${e.message}`);
+                }
+                return res.status(200).json({ ok: true });
+            }
     
             //BOTÓN REGENERAR IMAGEN 🧹 FALTA LIMPIAR
             else if (data.startsWith("REGEN|")) {
                 const partes = data.split('|');
                 const idBorrador = partes[1];
-                const idProd = partes[2]; 
-            
+                const idProd = partes[2];
                 try {
-                    if (!idBorrador || !idProd) throw new Error("Faltan IDs para regenerar");
-            
-                    const borradorValido = await airtableService.base(airtableService.t.disenos).find(idBorrador);
-                    const productoValido = await airtableService.base(airtableService.t.productos).find(idProd);
-            
-                    if (!borradorValido || !productoValido) throw new Error("No encontré los registros en Airtable");
-
-                    let promptMaestro;
-
-                    // ✨ MEJORA: Si ya existe un Prompt_Final guardado, lo usamos (Memoria perfecta)
-                    if (borradorValido.fields.Prompt_Final) {
-                        promptMaestro = borradorValido.fields.Prompt_Final;
-                        await enviarMensajeSimple(chatId, "♻️ **Regenerando con el patrón exacto guardado...**");
-                    } else {
-                        // Si no está guardado, construimos el prompt de nuevo
-                        const descProdIA = productoValido.fields.Prompt_Final || "a plain white garment";
-                        let descTelaIA = borradorValido.fields.Prompt_Tela_Lookup;
-
-                        if (!descTelaIA && borradorValido.fields.Tela_Relacionada) {
-                            const idTela = borradorValido.fields.Tela_Relacionada[0];
-                            const registroTela = await airtableService.base(airtableService.t.telas).find(idTela);
-                            descTelaIA = registroTela.fields.Prompt_Final;
-                        }
-                        descTelaIA = descTelaIA || "minimalist repeating pattern";
-
-                        // EL PROMPT ÍNTEGRO Y CORRECTO
-                        promptMaestro = `
-                        Isolated ecommerce product photo of ${descProdIA} on a pure white (#FFFFFF) seamless background.
-                        Perfect straight front view. 
-                        The product is centered and fully visible.
-                        Clean cutout-style product image with only the product visible.
-                        On the center of the product there is a small appliqué letter "R".
-                        The letter occupies about one third of the product width.
-                        The letter "R" itself is a piece of fabric cut exactly in the shape of the letter.
-                        The fabric is cut following the exact outline of the letter.
-                        There is NO square patch.
-                        There is NO rectangular patch.
-                        There is NO fabric panel behind the letter.
-                        The letter is made from printed fabric with this exact visual identity: ${descTelaIA}.
-                        The printed pattern appears only inside the shape of the letter.
-                        The letter is sewn directly onto the product with zigzag satin stitching following the outer contour of the letter.
-                        Minimalist ecommerce catalog image.
-                        `.trim();
-                        
-                        await enviarMensajeSimple(chatId, "♻️ **Regenerando y guardando nuevo patrón...**");
-                    }
-
-                    const img = await openaiService.generarImagenDiseno(promptMaestro);
-                    const urlF = await imgbbService.subirAFotoUsuario(img) || img;
-
-                    await airtableService.base(airtableService.t.disenos).update(borradorValido.id, { 
-                        "Imagen_Generada": urlF,
-                        "Prompt_Final": promptMaestro
-                    });
-
+                    await enviarMensajeSimple(chatId, "♻️ **Regenerando diseño...**");
+                    const resultado = await studioService.regenerarDiseno(chatId, idBorrador, idProd);
                     await enviarMensajeConBotones(chatId, "🔄 Diseño regenerado.", [
-                        [{ text: "🖼️ Ver Alta Res", url: urlF }],
-                        [{ text: "🔄 De nuevo", callback_data: `REGEN|${idBorrador}|${idProd}` }]
+                        [{ text: "🖼️ Ver Alta Res", url: resultado.urlFinal }],
+                        [{ text: "🔄 De nuevo", callback_data: `REGEN|${resultado.idBorrador}|${resultado.idProducto}` }]
                     ]);
-                } catch (e) { 
+                } catch (e) {
                     console.error("💥 Error en REGEN:", e.message);
-                    await enviarMensajeSimple(chatId, `⚠️ Error al regenerar: ${e.message}`); 
+                    await enviarMensajeSimple(chatId, `⚠️ Error al regenerar: ${e.message}`);
                 }
                 return res.status(200).json({ ok: true });
-                }   
+            }   
 
             // BOTONES DE FOTOS A INVENTARIO 🧹 FALTA LIMPIAR
 
             if (data.startsWith("FOTO_")) {
                 const [tipo, uniqueId] = data.split('|');
-                const fotoId = cacheFotos[uniqueId];
-                
+                const sesionFoto = await airtableService.obtenerSesion(chatId);
+                const fotoId = sesionFoto?.metadata?.fileId;
+
                 if (!fotoId) {
-                    await enviarMensajeSimple(chatId, "❌ Sesión expirada.");
+                    await enviarMensajeSimple(chatId, "⚠️ No he podido recuperar la foto. Inténtalo de nuevo.");
                     return res.status(200).json({ ok: true });
                 }
+                
+                await airtableService.borrarSesion(chatId);
 
-            await enviarMensajeSimple(chatId, "🔍 **Analizando imagen y patrón visual...**");
+                try {
+                    if (tipo === "FOTO_TRABAJO") {
+                        await enviarMensajeSimple(chatId, "✨ **Preparando ficha para el Archivador...**");
+                    } else {
+                        await enviarMensajeSimple(chatId, "🔍 **Analizando imagen y patrón visual...**");
+                    }
 
-            const fileRes = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/getFile?file_id=${fotoId}`);
-            const fileJson = await fileRes.json();
-            const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileJson.result.file_path}`;
-            
-            // ✨ INSERCIÓN ESTRATÉGICA: Si es un trabajo, saltamos el análisis de stock
-            if (tipo === "FOTO_TRABAJO") {
-                await enviarMensajeSimple(chatId, "✨ **Preparando ficha para el Archivador...**");
-                const metadataInitial = { 
-                    uniqueId, 
-                    fotoId,
-                    tipo: "TRABAJO", 
-                    step: "ESP_NOMBRE_TRABAJO" 
-                };
-                await enviarMensajeConReply(chatId, `🎨 ¡Qué bonito trabajo! ¿Qué **Nombre** le ponemos a este proyecto?\n\n(DATOS_IA: ${JSON.stringify(metadataInitial)})`);
+                    const metadata = await photoService.procesarFotoAdmin(chatId, tipo, uniqueId, fotoId);
+
+                    if (metadata.esTrabajo) {
+                        await airtableService.guardarSesion(chatId, metadata.step, metadata);
+                        await enviarMensajeConReply(chatId, `🎨 ¡Qué bonito trabajo! ¿Qué **Nombre** le ponemos a este proyecto?`, null);
+                    } else {
+                        await airtableService.guardarSesion(chatId, metadata.step, metadata);
+                        await enviarMensajeConReply(chatId, `✅ Análisis:\n¿Qué **Nombre** le ponemos?`, null);
+                    }
+                } catch (e) {
+                    console.error("💥 Error en FOTO_:", e.message);
+                    await enviarMensajeSimple(chatId, "⚠️ No he podido analizar la imagen. Inténtalo de nuevo.");
+                }
+
                 return res.status(200).json({ ok: true });
-            }
-
-            let promptAnalizado = "";
-
-            if (tipo === "FOTO_TELA") {
-                await enviarMensajeSimple(chatId, "🎨 **Analizando estampado...**");
-                promptAnalizado = await openaiService.describirTela(fileUrl); // Tu función de 35 palabras
-            } else if (tipo === "FOTO_PROD") {
-                await enviarMensajeSimple(chatId, "👗 **Analizando tipo de producto...**");
-                promptAnalizado = await openaiService.describirProducto(fileUrl); // Tu nueva función de 3-6 palabras
-            }
-
-            const analisis = await openaiService.analizarImagenInventario(fileUrl, tipo);
-            const metadataInitial = { 
-                ...analisis, 
-                uniqueId, 
-                fotoId,
-                // Guardamos el prompt analizado en la mochila según el tipo
-                prompt_final: tipo === "FOTO_TELA" ? promptAnalizado : "",
-                prompt_prod: tipo === "FOTO_PROD" ? promptAnalizado : "",
-                tipo: tipo.replace("FOTO_", ""), 
-                step: "ESPERANDO_NOMBRE" 
-            };
-
-            
-            
-
-        
-            await enviarMensajeConReply(chatId, `✅ Análisis:\n¿Qué **Nombre** le ponemos?\n\n(DATOS_IA: ${JSON.stringify(metadataInitial)})`);
-            return res.status(200).json({ ok: true }); // ✨ El recibo para que Telegram no repita
             }   
             
                
@@ -331,14 +203,14 @@ module.exports = async function handler(req, res) {
 
             if (data.startsWith("CAT_TRAB|")) {
                 const [, categoria, uniqueId] = data.split('|');
-                const metaRaw = cacheFotos[uniqueId + "_meta"];
+                const sesionTrabajo = await airtableService.obtenerSesion(chatId);
                 
-                if (!metaRaw) {
+                if (!sesionTrabajo || !sesionTrabajo.metadata) {
                     await enviarMensajeSimple(chatId, "❌ La sesión ha expirado, por favor sube la foto de nuevo.");
                     return res.status(200).json({ ok: true });
                 }
             
-                const metadata = JSON.parse(metaRaw);
+                const metadata = sesionTrabajo.metadata;
                 await editarMensaje(chatId, callback_query.message.message_id, `⏳ Procesando imagen para la categoría *${categoria}*...`);
             
                 try {
@@ -360,8 +232,8 @@ module.exports = async function handler(req, res) {
             
                     await enviarMensajeSimple(chatId, `✅ **¡Proyecto archivado con éxito!**\n🌟 *${metadata.nombre}* ya está disponible en el catálogo de *${categoria}* para los clientes.`);
                     
-                    // Limpiamos caché
-                    delete cacheFotos[uniqueId + "_meta"];
+                    // Limpiamos sesión
+                    await airtableService.borrarSesion(chatId);
             
                 } catch (e) {
                     console.error("💥 Error guardando trabajo:", e.message);
@@ -563,7 +435,8 @@ module.exports = async function handler(req, res) {
                 try {
                     const idClase = data.split('|')[1];
                     const meta = { step: "ADM_ESP_NUEVA_HORA", idClase };
-                    await enviarMensajeConReply(chatId, `⏰ ¿Cuál es el nuevo horario?\n\n(DATOS_IA: ${JSON.stringify(meta)})`);
+                    await airtableService.guardarSesion(chatId, "ADM_ESP_NUEVA_HORA", meta);
+                    await enviarMensajeConReply(chatId, `⏰ ¿Cuál es el nuevo horario?`, null);
                     await responderBoton(callback_query.id);
                     return res.status(200).json({ ok: true });
                 } catch (e) {
@@ -673,6 +546,42 @@ module.exports = async function handler(req, res) {
                     return res.status(200).json({ ok: true });
                 }
             }
+
+            // G. Apuntar a clase (desde lista de interesadas)
+            else if (data.startsWith("APUNTAR_ALU|")) {
+                try {
+                    const parts = data.split('|');
+                    const idInteresada = parts[1];
+                    const idClase = parts[2];
+
+                    if (!idInteresada || !idClase) {
+                        await enviarMensajeSimple(chatId, "Este botón ya no está disponible.");
+                        await responderBoton(callback_query.id);
+                        return res.status(200).json({ ok: true });
+                    }
+
+                    const result = await academiaService.inscribirAlumna(idInteresada, idClase);
+
+                    const confirmacion = `✅ Hecho. ${result.nombre} ya está en la clase de ${result.nombreClase}.`;
+
+                    const mensajeWA = result.esAlumnaExistente
+                        ? `¡Hola ${result.nombre}! ✨ Soy Reyes de Mamafina. Ya estás apuntada a la clase de ${result.nombreClase}. Tu ID de alumna es ${result.idAlumna}. ¡Guárdalo para consultar tu ficha cuando quieras! 🧵`
+                        : `¡Hola ${result.nombre}! ✨ Soy Reyes de Mamafina. Ya estás apuntada a la clase de ${result.nombreClase}. Tu ID de alumna es ${result.idAlumna}. ¡Úsalo para crear tu ficha personal en el bot! 🧵`;
+
+                    const linkWA = await escaparateService.formatearLinkWA(result.telefono, result.nombre, mensajeWA);
+
+                    const botones = [[{ text: `📲 Enviar ID a ${result.nombre} por WhatsApp`, url: linkWA }]];
+
+                    await enviarMensajeConBotones(chatId, confirmacion, botones);
+                    await responderBoton(callback_query.id);
+                    return res.status(200).json({ ok: true });
+                } catch (e) {
+                    console.error("💥 Error en APUNTAR_ALU:", e.message);
+                    await enviarMensajeSimple(chatId, "❌ Hubo un problema al apuntar a la alumna. Inténtalo de nuevo.");
+                    await responderBoton(callback_query.id);
+                    return res.status(200).json({ ok: true });
+                }
+            }
             // 7. BOTONES CLIENTES
             // A. Interesado / Hablar (WhatsApp o consulta fuera de horario)
             else if (data === "CLI_INTERESADO") {
@@ -686,7 +595,8 @@ module.exports = async function handler(req, res) {
                         ]);
                     } else {
                         const meta = { step: "ESP_CONSULTA", chatId, userTelegram: user };
-                        await enviarMensajeConReply(chatId, `✨ Taller cerrado.\n¿Qué necesitas consultar?\n\n(DATOS_IA: ${JSON.stringify(meta)})`);
+                        await airtableService.guardarSesion(chatId, "ESP_CONSULTA", meta);
+                        await enviarMensajeConReply(chatId, `✨ Taller cerrado.\n¿Qué necesitas consultar?`, null);
                     }
                     await responderBoton(callback_query.id);
                     return res.status(200).json({ ok: true });
@@ -813,24 +723,56 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }
 
+            // D.2. Buscar ficha por ID de alumna
+            else if (data === "ACAD_BUSCAR_POR_ID") {
+                try {
+                    await responderBoton(callback_query.id);
+                    await airtableService.guardarSesion(chatId, "ESP_ID_ALUMNA", { step: "ESP_ID_ALUMNA" });
+                    await enviarMensajeConReply(chatId, "🔍 Dime tu ID de alumna (empieza por #ALU) y te abro la ficha enseguida, primor.", null);
+                    return res.status(200).json({ ok: true });
+                } catch (e) {
+                    console.error("Error en ACAD_BUSCAR_POR_ID", e);
+                    await enviarMensajeSimple(chatId, "⚠️ No he podido procesar eso. Inténtalo de nuevo.");
+                    return res.status(200).json({ ok: true });
+                }
+            }
+
             // E. Acción: Gestión de Ficha (Obtener/Crear)
             else if (data === "ACAD_GESTION_FICHA" || data === "ACAD_CREAR_NUEVA") {
                 try {
                     const usuarioTelegram = callback_query.from;
-                    let ficha = await academiaService.obtenerOcrearFicha(chatId, usuarioTelegram.first_name); 
-                    
+                    let ficha = await academiaService.obtenerOcrearFicha(chatId, usuarioTelegram.first_name);
+
+                    const sesion = await airtableService.obtenerSesion(chatId);
+                    let airtableId = sesion?.metadata?.airtableId || ficha?.id || "";
+
                     let mensajeStatus = `📓 **TU FICHA DE ALUMNA**\n\n` +
                                         `🆔 **ID:** \`${ficha.ID_Alumna_Unico}\`\n` +
                                         `👤 **Nombre:** ${ficha.Nombre_Real || '⚠️ Pendiente'}\n` +
                                         `🧵 **Proyecto:** ${ficha.Proyecto_Actual || 'Sin anotar'}\n` +
-                                        `📍 **Notas:** ${ficha.Notas_Tecnicas || 'Sin notas'}\n`;
+                                        `📍 **Notas:** ${ficha.Notas_Tecnicas || 'Sin notas'}`;
 
+                    await airtableService.guardarSesion(chatId, "FICHA_ACTIVA", { airtableId });
                     const botonesGestion = [
                         [{ text: "👤 Cambiar mi Nombre", callback_data: "MOD_NOMBRE" }],
                         [{ text: "🧵 Gestionar Proyecto Actual", callback_data: "MENU_LABOR" }],
                         [{ text: "⬅️ Volver", callback_data: "CLI_ACADEMIA" }]
                     ];
-                    await editarMensajeConBotones(chatId, messageId, mensajeStatus, botonesGestion);
+                    await enviarMensajeConBotones(chatId, mensajeStatus, botonesGestion, null);
+
+                    if (ficha.Foto_Patron) {
+                        await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendPhoto`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ chat_id: chatId, photo: ficha.Foto_Patron, caption: "🖼️ Foto de tu patrón actual" })
+                        });
+                    }
+                    if (!ficha.Foto_Patron && ficha.Patron_PDF && Array.isArray(ficha.Patron_PDF) && ficha.Patron_PDF[0]?.url) {
+                        await enviarMensajeConBotones(chatId, "📄 Tienes un patrón en PDF guardado", [[{ text: "📄 Ver PDF", url: ficha.Patron_PDF[0].url }]], null);
+                    }
+                    if (ficha.Link_Patron) {
+                        await enviarMensajeConBotones(chatId, "🔗 Tienes un patrón guardado", [[{ text: "🔗 Ver patrón", url: ficha.Link_Patron }]], null);
+                    }
                 } catch (e) {
                     console.error("💥 Error en Gestión Ficha:", e.message);
                     await enviarMensajeSimple(chatId, "❌ No he podido abrir tu libreta de costura ahora mismo.");
@@ -842,9 +784,13 @@ module.exports = async function handler(req, res) {
             // F. Submenú: Gestión de Labor (Proyecto, Notas, Patrón)
             else if (data === "MENU_LABOR") {
                 try {
+                    const sesion = await airtableService.obtenerSesion(chatId);
+                    const airtableId = sesion?.metadata?.airtableId || "";
+
                     const ficha = await airtableService.obtenerFichaAlumna(chatId);
+                    await airtableService.guardarSesion(chatId, "MENU_LABOR", { airtableId });
                     const texto = `🧵 **GESTIÓN DE TU LABOR**\n\n` +
-                                `Actualmente estás con: **${ficha.Proyecto_Actual || 'Sin anotar'}**\n` +
+                                `Actualmente estás con: **${ficha?.Proyecto_Actual || 'Sin anotar'}**\n` +
                                 `¿Qué quieres actualizar, primor?`;
                     const botonesLabor = [
                         [{ text: "📝 Nombre del Proyecto", callback_data: "MOD_PROYECTO" }],
@@ -852,7 +798,7 @@ module.exports = async function handler(req, res) {
                         [{ text: "📂 Gestionar Patrón", callback_data: "MENU_PATRON" }],
                         [{ text: "⬅️ Volver", callback_data: "ACAD_GESTION_FICHA" }]
                     ];
-                    await editarMensajeConBotones(chatId, messageId, texto, botonesLabor);
+                    await enviarMensajeConBotones(chatId, texto, botonesLabor, null);
                 } catch (e) { console.error("Error en MENU_LABOR:", e); }
                 await responderBoton(callback_query.id);
                 return res.status(200).json({ ok: true });
@@ -861,15 +807,33 @@ module.exports = async function handler(req, res) {
             // G. Acciones de Edición (Disparadores de Reply)
             else if (["MOD_NOMBRE", "MOD_PROYECTO", "MOD_NOTAS", "MOD_LINK", "MOD_ARCHIVO"].includes(data)) {
                 try {
-                    const mensajes = {
-                        "MOD_NOMBRE": "✍️ ¿Cómo quieres que te anote en la libreta? (Dime Nombre y Apellidos)",
-                        "MOD_PROYECTO": "🧵 ¿En qué **Proyecto** estás trabajando ahora, primor?",
-                        "MOD_NOTAS": "📍 ¡Cuéntame los detalles! (Agujas, tensión, cambios...)",
-                        "MOD_LINK": "🔗 Pega aquí el **Enlace/Link** de la web de tu patrón:",
-                        "MOD_ARCHIVO": "📄 Envíame el **Archivo PDF** o una **Foto** del patrón:"
-                    };
-                    await airtableService.iniciarBorradorAlumna(chatId);
-                    await enviarMensajeConReply(chatId, mensajes[data]);
+                    if (data === "MOD_ARCHIVO") {
+                        const sesion = await airtableService.obtenerSesion(chatId);
+                        let airtableId = sesion?.metadata?.airtableId;
+                        if (!airtableId) {
+                            const ficha = await airtableService.obtenerFichaAlumna(chatId);
+                            if (ficha) airtableId = ficha.id;
+                        }
+                        if (airtableId) {
+                            await airtableService.guardarSesion(chatId, "ESP_ARCHIVO", { step: "ESP_ARCHIVO", airtableId });
+                            await enviarMensajeConReply(chatId, "📄 Envíame el archivo PDF o una foto del patrón, primor.", null);
+                        } else {
+                            await enviarMensajeSimple(chatId, "Para guardar un patrón, ve a tu ficha y pulsa 📂 Gestionar Patrón primero, primor.");
+                        }
+                    } else {
+                        const sesion = await airtableService.obtenerSesion(chatId);
+                        const airtableId = sesion?.metadata?.airtableId || "";
+
+                        await airtableService.guardarSesion(chatId, data, { airtableId });
+                        const mensajes = {
+                            "MOD_NOMBRE": "✍️ ¿Cómo quieres que te anote en la libreta? (Dime Nombre y Apellidos)",
+                            "MOD_PROYECTO": "🧵 ¿En qué **Proyecto** estás trabajando ahora, primor?",
+                            "MOD_NOTAS": "📍 ¡Cuéntame los detalles! (Agujas, tensión, cambios...)",
+                            "MOD_LINK": "🔗 Pega aquí el **Enlace/Link** de la web de tu patrón:"
+                        };
+                        await airtableService.iniciarBorradorAlumna(chatId);
+                        await enviarMensajeConReply(chatId, mensajes[data], null);
+                    }
                 } catch (e) { console.error("Error en MOD_ acciones:", e); }
                 await responderBoton(callback_query.id);
                 return res.status(200).json({ ok: true });
@@ -878,12 +842,17 @@ module.exports = async function handler(req, res) {
             // H. Submenú: Gestión de Patrón
             else if (data === "MENU_PATRON") {
                 try {
+                    const sesion = await airtableService.obtenerSesion(chatId);
+                    const airtableId = sesion?.metadata?.airtableId;
+
+                    await airtableService.guardarSesion(chatId, "MENU_PATRON", { airtableId: airtableId || "" });
+                    const textoMenu = "¡Genial! ¿Cómo es el patrón que quieres guardar?";
                     const botonesPatron = [
                         [{ text: "🔗 Enlace Web (URL)", callback_data: "MOD_LINK" }],
                         [{ text: "📄 Archivo (PDF/Foto)", callback_data: "MOD_ARCHIVO" }],
                         [{ text: "⬅️ Volver", callback_data: "MENU_LABOR" }]
                     ];
-                    await editarMensajeConBotones(chatId, messageId, "¡Genial! ¿Cómo es el patrón que quieres guardar?", botonesPatron);
+                    await enviarMensajeConBotones(chatId, textoMenu, botonesPatron, null);
                 } catch (e) { console.error("Error en MENU_PATRON:", e); }
                 await responderBoton(callback_query.id);
                 return res.status(200).json({ ok: true });
@@ -955,8 +924,8 @@ module.exports = async function handler(req, res) {
                             idClase: idClase, 
                             tipoClase: tipo 
                         };
-                        
-                        await enviarMensajeConReply(chatId, `¡Qué alegría! ✨ Para avisarte cuando haya un hueco libre en **${tipo}**, ¿cómo te llamas?\n\n(DATOS_IA: ${JSON.stringify(meta)})`);
+                        await airtableService.guardarSesion(chatId, "ESP_NOMBRE_INTERESADA", meta);
+                        await enviarMensajeConReply(chatId, `¡Qué alegría! ✨ Para avisarte cuando haya un hueco libre en **${tipo}**, ¿cómo te llamas?`, null);
                     }
                     await responderBoton(callback_query.id);
                     return res.status(200).json({ ok: true });
@@ -997,64 +966,38 @@ module.exports = async function handler(req, res) {
 
             // --- ESCENARIO A: FLUJO DE ADMIN (Guardar en Inventario o Portfolio) ---
             if (esAdmin) {
-                // Guardamos en la mochila temporal para usarla en el siguiente paso
-                cacheFotos[uniqueId] = fileId;
-
-                const botonesAdmin = [
-                    [{ text: "🧵 Tela", callback_data: `FOTO_TELA|${uniqueId}` }],
-                    [{ text: "👗 Producto", callback_data: `FOTO_PROD|${uniqueId}` }],
-                    [{ text: "✨ Trabajo Realizado", callback_data: `FOTO_TRABAJO|${uniqueId}` }],
-                    [{ text: "🔘 Mercería", callback_data: `FOTO_MERC|${uniqueId}` }]
-                ];
-
+                await airtableService.guardarSesion(chatId, "ESPERANDO_TIPO_FOTO", { uniqueId, fileId });
+                const botonesAdmin = photoService.obtenerBotonesAdmin(uniqueId);
                 await enviarMensajeConBotones(chatId, "📸 **Jefa**, ¿dónde guardamos esta imagen?", botonesAdmin);
             } 
 
             // --- ESCENARIO B: FLUJO ALUMNA (Diario de Labores / Avances) ---
             else {
-                // Comprobamos si la alumna está respondiendo a un paso previo del bot
                 if (message.reply_to_message) {
                     const replyText = message.reply_to_message.text || message.reply_to_message.caption || "";
-                    const metadata = extraerMetadata(replyText);
-
-                    // Si el bot estaba esperando una foto de su labor
-                    if (metadata && metadata.step === "ACAD_ESP_FOTO") {
-                        await enviarMensajeSimple(chatId, "⏳ **Guardando tu avance en el costurero digital...**");
+                    const sesionFoto = await airtableService.obtenerSesion(chatId);
+                    if (sesionFoto && sesionFoto.step === "ESP_ARCHIVO") {
+                        await enviarMensajeSimple(chatId, "⏳ **Guardando patrón en tu costurero digital...**");
 
                         try {
-                            // 1. Descargamos la URL temporal de Telegram
                             const fileRes = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/getFile?file_id=${fileId}`);
                             const fileJson = await fileRes.json();
                             const urlTele = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileJson.result.file_path}`;
 
-                            // 2. La subimos a ImgBB para tener un enlace permanente (para Airtable)
                             const urlFinal = await imgbbService.subirAFotoUsuario(urlTele);
 
-                            // 3. Registramos en Airtable (Tabla Alumnas_Comunidad)
-                            const fichaExistente = await airtableService.obtenerFichaAlumna(chatId);
-                            const camposActualizar = {
-                                "Telegram_ID": String(chatId),
-                                "Proyecto_Actual": metadata.proyecto || "Sin nombre",
-                                "Notas_Tecnicas": metadata.notas || "",
-                                "Foto": urlFinal 
-                            };
+                            await airtableService.actualizarPatronAlumna(sesionFoto.metadata.airtableId, {
+                                "Foto_Patron": urlFinal
+                            });
 
-                            if (fichaExistente) {
-                                await airtableService.base('Alumnas_Comunidad').update(fichaExistente.id, camposActualizar);
-                            } else {
-                                await airtableService.base('Alumnas_Comunidad').create([{ fields: camposActualizar }]);
-                            }
-
-                            await enviarMensajeSimple(chatId, `✅ **¡Avance guardado, primor!**\n\nHe anotado tu progreso en *${metadata.proyecto}*. ¡Qué buena mano tienes! ✨`);
-                        
+                            await airtableService.borrarSesion(chatId);
+                            await enviarMensajeSimple(chatId, "✅ **¡Foto del patrón guardada, primor!** ✨");
                         } catch (error) {
-                            console.error("💥 Error en proceso de foto alumna:", error.message);
-                            await enviarMensajeSimple(chatId, "⚠️ ¡Ay, cielo! He anotado tus notas pero la foto no se ha querido guardar. No te preocupes, lo importante es el trabajo.");
+                            console.error("💥 Error guardando foto patrón:", error.message);
+                            await enviarMensajeSimple(chatId, "⚠️ No he podido guardar la foto. Inténtalo de nuevo, primor.");
                         }
                     }
-                } 
-                // Si manda una foto "porque sí" (fuera de flujo)
-                else {
+                } else {
                     await enviarMensajeSimple(chatId, "¡Qué foto más bonita, corazón! ✨\n\nSi quieres que la guarde en tu **Ficha de Alumna**, pulsa primero en:\n**🎓 Academia** -> **📓 Mi Ficha** -> **🧵 Gestionar Proyecto**.");
                 }
             }
@@ -1071,31 +1014,27 @@ module.exports = async function handler(req, res) {
 
         else if (message && message.document) {
             try {
-                // 1. Buscamos si la alumna está en proceso de edición (Nombre_Real === "📝 Borrador")
-                const borrador = await airtableService.obtenerBorradorAcademia(chatId);
-                
-                // 2. Verificamos que sea un PDF y que haya un borrador activo
-                if (borrador && message.document.mime_type === 'application/pdf') {
+                const sesionPDF = await airtableService.obtenerSesion(chatId);
+                const airtableId = sesionPDF?.metadata?.airtableId;
+
+                if (airtableId && message.document.mime_type === 'application/pdf') {
                     const fileId = message.document.file_id;
-                    
+
                     await enviarMensajeSimple(chatId, "⏳ **Guardando patrón en tu costurero digital...**");
 
-                    // 3. Obtenemos la URL del archivo desde los servidores de Telegram
                     const fileRes = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/getFile?file_id=${fileId}`);
                     const fileJson = await fileRes.json();
                     const urlTele = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileJson.result.file_path}`;
 
-                    // 4. Actualizamos la ficha en Airtable
-                    // Guardamos el enlace del PDF y RESTAURAMOS el nombre real para cerrar el modo borrador
-                    await airtableService.actualizarPatronAlumna(borrador.id, { 
-                        "Patron_PDF": [{ url: urlTele }], // Se envía como array de objetos para campos de adjunto
-                        "Nombre_Real": borrador.Nombre_Real_Guardado // Quitamos el "📝 Borrador"
+                    await airtableService.actualizarPatronAlumna(airtableId, {
+                        "Patron_PDF": [{ url: urlTele }]
                     });
 
+                    await airtableService.borrarSesion(chatId);
                     await enviarMensajeSimple(chatId, "✅ ¡PDF recibido y guardado en tu ficha de alumna, primor! Ya no se te perderá ninguna medida. ✨");
-                } 
-                else if (borrador) {
-                    // Si manda un documento que no es PDF durante el flujo
+                } else if (!airtableId) {
+                    await enviarMensajeSimple(chatId, "Para guardar un patrón, ve a tu ficha y pulsa 📂 Gestionar Patrón primero, primor.");
+                } else if (message.document.mime_type !== 'application/pdf') {
                     await enviarMensajeSimple(chatId, "Cielo, por ahora solo puedo guardar archivos en formato **PDF**. Inténtalo de nuevo con ese formato. 🧵");
                 }
             } catch (error) {
@@ -1103,7 +1042,6 @@ module.exports = async function handler(req, res) {
                 await enviarMensajeSimple(chatId, "⚠️ Ay, no he podido guardar el archivo. Asegúrate de que no es muy pesado e inténtalo de nuevo.");
             }
 
-            // Cerramos la petición para Vercel
             return res.status(200).json({ ok: true });
         }
 
@@ -1121,8 +1059,14 @@ module.exports = async function handler(req, res) {
             const esRespuesta = !!message.reply_to_message;
             const replyText = esRespuesta ? (message.reply_to_message.text || message.reply_to_message.caption || "") : "";
             const rTextLower = replyText.toLowerCase(); // ✨ ¡ESTA ES LA LÍNEA QUE FALTA!
-            const metadata = extraerMetadata(replyText);
-            const paso = metadata?.step || null;
+            const sesion = await airtableService.obtenerSesion(chatId);
+            const metadata = sesion?.metadata || null;
+            const paso = sesion?.step || null;
+            console.log("📨 [DEBUG] esRespuesta:", esRespuesta);
+            console.log("📨 [DEBUG] replyText:", replyText);
+            console.log("📨 [DEBUG] metadata:", metadata);
+            console.log("📨 [DEBUG] paso:", paso);
+            console.log("📨 [DEBUG] message.reply_to_message:", JSON.stringify(message.reply_to_message, null, 2));
 
             // 2. FILTRO DE IDENTIDAD: SALUDOS Y MENÚ PRINCIPAL
             if (textoMinus === "/start" || textoMinus === "hola" || textoMinus === "menú") {
@@ -1164,26 +1108,103 @@ module.exports = async function handler(req, res) {
 
             // 4. FLUJOS BASADOS EN METADATOS (Formularios)
             if (paso) {
-                // A. Nombre Real de Alumna (Actualización de Ficha)
+                // A. Buscar ficha por ID de alumna (ESP_ID_ALUMNA)
+                if (paso === "ESP_ID_ALUMNA") {
+                    const idTexto = textoRecibido.trim();
+                    console.log("🔍 [DEBUG ESP_ID_ALUMNA] idTexto:", idTexto);
+
+                    const records = await airtableService.base(airtableService.t.academia).select({
+                        filterByFormula: `{ID_Alumna_Unico} = '${idTexto.replace(/'/g, "''")}'`,
+                        maxRecords: 1
+                    }).firstPage();
+                    console.log("🔍 [DEBUG ESP_ID_ALUMNA] registros encontrados:", records.length);
+
+                    const ficha = records && records.length > 0 ? { id: records[0].id, ...records[0].fields } : null;
+                    console.log("🔍 [DEBUG ESP_ID_ALUMNA] ficha:", ficha ? ficha.ID_Alumna_Unico : "null");
+
+                    if (ficha) {
+                        const textoFicha = `📓 **TU FICHA DE ALUMNA**\n\n🆔 **ID:** ${ficha.ID_Alumna_Unico || '—'}\n👤 **Nombre:** ${ficha.Nombre_Real || '—'}\n🧵 **Proyecto:** ${ficha.Proyecto_Actual || '—'}\n📍 **Notas:** ${ficha.Notas_Tecnicas || '—'}`;
+                        await enviarMensajeSimple(chatId, textoFicha);
+
+                        if (ficha.Foto_Patron) {
+                            await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendPhoto`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ chat_id: chatId, photo: ficha.Foto_Patron, caption: "🖼️ Foto de tu patrón actual" })
+                            });
+                        }
+                        if (!ficha.Foto_Patron && ficha.Patron_PDF && Array.isArray(ficha.Patron_PDF) && ficha.Patron_PDF[0]?.url) {
+                            await enviarMensajeConBotones(chatId, "📄 Tienes un patrón en PDF guardado", [[{ text: "📄 Ver PDF", url: ficha.Patron_PDF[0].url }]], null);
+                        }
+                        if (ficha.Link_Patron) {
+                            await enviarMensajeConBotones(chatId, "🔗 Tienes un patrón guardado", [[{ text: "🔗 Ver patrón", url: ficha.Link_Patron }]], null);
+                        }
+
+                        await airtableService.guardarSesion(chatId, "GESTION_FICHA", { airtableId: ficha.id });
+                        const textoConMetadata = "✨ ¿Qué quieres gestionar?";
+                        const botones = [[{ text: "✨ Gestionar mi ficha", callback_data: "ACAD_GESTION_FICHA" }]];
+                        await enviarMensajeConBotones(chatId, textoConMetadata, botones, null);
+                    } else {
+                        await enviarMensajeSimple(chatId, "🤷‍♀️ No he encontrado ninguna ficha con ese ID. Comprueba que empiece por #ALU y vuelve a intentarlo.");
+                        await airtableService.borrarSesion(chatId);
+                    }
+                    return res.status(200).json({ ok: true });
+                }
+
+                // B. Nombre Real de Alumna (Actualización de Ficha)
                 if (paso === "ACAD_ESP_NOMBRE_REAL") {
                     const ficha = await airtableService.obtenerFichaAlumna(chatId);
                     if (ficha) await airtableService.base('Alumnas_Comunidad').update(ficha.id, { "Nombre_Real": textoRecibido });
                     
                     // Preparamos el siguiente paso enviando la metadata actualizada
                     metadata.step = "ACAD_ESP_PROYECTO";
-                    await enviarMensajeConReply(chatId, `✅ ¡Encantada, **${textoRecibido}**! Ya estás bien anotada.\n\nAhora cuéntame, ¿en qué **Proyecto** estás trabajando? 🧵\n\n(DATOS_IA: ${JSON.stringify(metadata)})`);
+                    await airtableService.guardarSesion(chatId, metadata.step, metadata);
+                    await enviarMensajeConReply(chatId, `✅ ¡Encantada, **${textoRecibido}**! Ya estás bien anotada.\n\nAhora cuéntame, ¿en qué **Proyecto** estás trabajando? 🧵`, null);
                     return res.status(200).json({ ok: true });
                 }
 
                 // B. Inventario IA
                 if (paso.startsWith("ESPERANDO_")) {
                     const result = await inventoryService.handleInventoryIAWorkflow(chatId, metadata, textoRecibido);
-                    if (result.type === 'reply') await enviarMensajeConReply(chatId, result.text);
-                    else await enviarMensajeSimple(chatId, result.text);
+                    if (result.isFinal) {
+                        await airtableService.borrarSesion(chatId);
+                        await enviarMensajeSimple(chatId, result.text);
+                    } else {
+                        await airtableService.guardarSesion(chatId, result.metadata.step, result.metadata);
+                        if (result.type === 'reply') await enviarMensajeConReply(chatId, result.text);
+                        else await enviarMensajeSimple(chatId, result.text);
+                    }
                     return res.status(200).json({ ok: true });
                 }
 
-                // C. Consultas Escaparate e Interesadas Academia
+                // C. Visualizador (Laboratorio Mamafina)
+                if (paso === "VIZ_ESP_TELA") {
+                    const telas = await airtableService.buscarTelas(textoRecibido.trim());
+                    if (!telas || telas.length === 0) {
+                        await enviarMensajeSimple(chatId, "❌ No encontré esa tela. Prueba con otro nombre.");
+                    } else {
+                        for (const t of telas) {
+                            await enviarMensajeConBotones(chatId, `🧵 *Tela:* ${t.fields.Articulo}`, [[{ text: "✨ Elegir", callback_data: `TELA_SEL|${t.id.slice(-5)}` }]]);
+                        }
+                        await airtableService.borrarSesion(chatId);
+                    }
+                    return res.status(200).json({ ok: true });
+                }
+
+                if (paso === "VIZ_ESP_PRODUCTO") {
+                    const productos = await airtableService.buscarProductos(textoRecibido.trim());
+                    if (!productos || productos.length === 0) {
+                        await enviarMensajeSimple(chatId, "❌ No encontré ese producto. Prueba con otro nombre.");
+                    } else {
+                        for (const p of productos) {
+                            await enviarMensajeConBotones(chatId, `👗 *Producto:* ${p.fields.Articulo}`, [[{ text: "✨ Elegir", callback_data: `PROD_SEL|${p.id}` }]]);
+                        }
+                        await airtableService.borrarSesion(chatId);
+                    }
+                    return res.status(200).json({ ok: true });
+                }
+
+                // D. Consultas Escaparate e Interesadas Academia
                 if (["ESP_CONSULTA", "ESP_NOMBRE", "ESP_TELEFONO", "ESP_NOMBRE_INTERESADA", "ESP_TEL_INTERESADA"].includes(paso)) {
                     const result = await escaparateService.handleConsultationWorkflow(textoRecibido, metadata);
                     
@@ -1201,7 +1222,8 @@ module.exports = async function handler(req, res) {
                         }
                     } else {
                         // Si no es el final, sigue preguntando
-                        await enviarMensajeConReply(chatId, `${result.text}\n\n(DATOS_IA: ${JSON.stringify(result.meta)})`);
+                        await airtableService.guardarSesion(chatId, result.meta.step, result.meta);
+                        await enviarMensajeConReply(chatId, result.text, null);
                     }
                     return res.status(200).json({ ok: true });
                 }
@@ -1214,7 +1236,7 @@ module.exports = async function handler(req, res) {
                         [{ text: "👗 Ropa", callback_data: `CAT_TRAB|Ropa|${metadata.uniqueId}` }, { text: "👜 Bolsos", callback_data: `CAT_TRAB|Bolsos|${metadata.uniqueId}` }],
                         [{ text: "👶 Bebes", callback_data: `CAT_TRAB|Bebes|${metadata.uniqueId}` }, { text: "✨ Otros", callback_data: `CAT_TRAB|Otros|${metadata.uniqueId}` }]
                     ];
-                    cacheFotos[metadata.uniqueId + "_meta"] = JSON.stringify(metadata);
+                    await airtableService.guardarSesion(chatId, "ESP_CATEGORIA_TRABAJO", metadata);
                     await enviarMensajeConBotones(chatId, `Perfecto: "${metadata.nombre}". ¿En qué categoría lo guardamos?`, botonesCat);
                     return res.status(200).json({ ok: true });
                 }
@@ -1235,6 +1257,7 @@ module.exports = async function handler(req, res) {
             try {
                 // A. Borrador Pedido
                 const borradorPedido = await airtableService.obtenerBorradorActivo(chatId);
+                console.log("🔍 [DEBUG BORRADOR] borradorPedido:", borradorPedido ? borradorPedido.id : "null");
                 if (borradorPedido && borradorPedido.id) {
                     const result = await orderService.handleOrderWorkflow(chatId, replyText.toLowerCase(), textoRecibido, borradorPedido.id);
                     if (result.isFinal) {
@@ -1248,9 +1271,30 @@ module.exports = async function handler(req, res) {
 
                 // B. Borrador Academia (Solo para alumnas)
                 if (!esAdmin) {
-                    const borradorAlumna = await airtableService.obtenerBorradorAcademia(chatId);
-                    if (borradorAlumna) {
-                        const result = await academiaService.handleAcademiaWorkflow(chatId, replyText.toLowerCase(), textoRecibido, borradorAlumna.id);
+                    console.log("🔍 [DEBUG ACADEMIA] entrando en borrador academia");
+                    console.log("🔍 [DEBUG ACADEMIA] replyText:", replyText);
+                    const sesionAcad = await airtableService.obtenerSesion(chatId);
+                    let fichaAlumna = null;
+                    if (sesionAcad && sesionAcad.metadata && sesionAcad.metadata.airtableId) {
+                        fichaAlumna = { id: sesionAcad.metadata.airtableId };
+                    }
+                    if (!fichaAlumna) {
+                        const ficha = await airtableService.obtenerFichaAlumna(chatId);
+                        if (ficha) fichaAlumna = ficha;
+                    }
+                    console.log("🔍 [DEBUG ACADEMIA] metadata:", sesionAcad?.metadata);
+                    console.log("🔍 [DEBUG ACADEMIA] fichaAlumna:", fichaAlumna);
+                    const replyLower = replyText.toLowerCase();
+                    if (fichaAlumna && replyText && (
+                        replyLower.includes("libreta") ||
+                        replyLower.includes("proyecto") ||
+                        replyLower.includes("detalles") ||
+                        replyLower.includes("enlace")
+                    )) {
+                        console.log("🔍 [DEBUG ACADEMIA] llamando workflow con step:", replyText.toLowerCase());
+                        const result = await academiaService.handleAcademiaWorkflow(
+                            chatId, replyText.toLowerCase(), textoRecibido, fichaAlumna.id
+                        );
                         if (result.isFinal) await enviarMensajeSimple(chatId, result.text);
                         else await enviarMensajeConReply(chatId, result.text);
                         return res.status(200).json({ ok: true });
@@ -1302,26 +1346,6 @@ module.exports = async function handler(req, res) {
                     
                         
 
-                    // VISUALIZAR
-
-                    // Elegimos tela
-                    if (rTextLower.includes("tela buscamos")) {
-                        const telas = await airtableService.buscarTelas(textoRecibido.trim());
-                        for (const t of telas) {
-                            await enviarMensajeConBotones(chatId, `🧵 *Tela:* ${t.fields.Articulo}`, [[{ text: "✨ Elegir", callback_data: `TELA_SEL|${t.id.slice(-5)}` }]]);
-                        }
-                        return res.status(200).json({ ok: true });
-                    }
-                
-                    // Elegimos producto
-                    if (rTextLower.includes("producto vamos a confeccionar")) {
-                        const productos = await airtableService.buscarProductos(textoRecibido.trim());
-                        for (const p of productos) {
-                            await enviarMensajeConBotones(chatId, `👗 *Producto:* ${p.fields.Articulo}`, [[{ text: "✨ Elegir", callback_data: `PROD_SEL|${p.id}` }]]);
-                        }
-                        return res.status(200).json({ ok: true });
-                    }
-
                     // Mensaje por defecto si ninguna condición anterior coincide
                     await enviarMensajeSimple(chatId, "No he entendido esa respuesta. ¿Puedes intentarlo de nuevo?");
                     return res.status(200).json({ ok: true });
@@ -1361,6 +1385,7 @@ module.exports = async function handler(req, res) {
 
                 // B. Visualizar
                 if (textoMinus.startsWith("/visualizar")) {
+                    await airtableService.guardarSesion(chatId, "VIZ_ESP_TELA", {});
                     await enviarMensajeConReply(chatId, "🎨 **Laboratorio Mamafina**\n¿Qué tela buscamos?");
                     return res.status(200).json({ ok: true });
                 } 
@@ -1405,7 +1430,8 @@ module.exports = async function handler(req, res) {
                         referencia: ""
                     };
                     
-                    await enviarMensajeConReply(chatId, `🆕 **Entrada Manual de Inventario**\n¿Cuál es el **Nombre** del artículo?\n\n(DATOS_IA: ${JSON.stringify(metadataManual)})`);
+                    await airtableService.guardarSesion(chatId, "ESPERANDO_NOMBRE", metadataManual);
+                    await enviarMensajeConReply(chatId, `🆕 **Entrada Manual de Inventario**\n¿Cuál es el **Nombre** del artículo?`, null);
                     return res.status(200).json({ ok: true });
                 }   
 
@@ -1615,25 +1641,35 @@ module.exports = async function handler(req, res) {
         });
     }
 
-    async function enviarMensajeConBotones(chatId, texto, botones) {
+    async function enviarMensajeConBotones(chatId, texto, botones, parseMode = 'Markdown') {
+        const body = {
+            chat_id: chatId,
+            text: texto,
+            reply_markup: { inline_keyboard: botones }
+        };
+        if (parseMode != null) {
+            body.parse_mode = parseMode;
+        }
         await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: chatId, text: texto, parse_mode: 'Markdown',
-                reply_markup: { inline_keyboard: botones }
-            })
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
         });
     }
 
-    async function enviarMensajeConReply(chatId, texto) {
+    async function enviarMensajeConReply(chatId, texto, parseMode = 'Markdown') {
+        const body = {
+            chat_id: chatId,
+            text: texto,
+            reply_markup: { force_reply: true }
+        };
+        if (parseMode != null) {
+            body.parse_mode = parseMode;
+        }
         await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`, {
-            method: 'POST', 
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                chat_id: chatId, 
-                text: texto, 
-                reply_markup: { force_reply: true } // Esto es vital para que funcione
-            })
+            body: JSON.stringify(body)
         });
     }
 

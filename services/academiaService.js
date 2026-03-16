@@ -337,7 +337,7 @@ class AcademiaService {
         
         // 2. Si no existe la ficha, usamos la función nativa que ya creaste en airtableService
         if (!ficha) {
-            const nuevoID = this.generarIDAlumna(chatId);
+            const nuevoID = await airtableService.generarSiguienteIDAlumna();
             const records = await airtableService.crearFichaBasica(chatId, username, nuevoID);
             
             if (records && records.length > 0) {
@@ -351,69 +351,86 @@ class AcademiaService {
    
     // MAPEO DE LA FICHA DE ALUMNA
         async handleAcademiaWorkflow(chatId, step, text, recordId) {
-            const updates = {};
-            let result = { text: "", isFinal: false };
-        
-            // Mapeo de respuestas según la pregunta que hizo el bot
-            if (step.includes("anote en la libreta")) {
-                updates.Nombre_Real = text;
-                result.text = "✅ ¡Nombre actualizado, primor! Ya aparece en tu ficha digital.";
-                result.isFinal = true;
-            } 
-            else if (step.includes("proyecto estás trabajando")) {
-                updates.Proyecto_Actual = text;
-                result.text = "🧵 ¡Anotado! He actualizado el nombre de tu labor.";
-                result.isFinal = true;
-            }
-            else if (step.includes("cuéntame los detalles")) {
-                updates.Notas_Tecnicas = text;
-                result.text = "📍 Notas técnicas guardadas. ¡Así no se te olvida ni un punto!";
-                result.isFinal = true;
-            }
-            else if (step.includes("enlace/link de la web")) {
-                if (text.startsWith("http")) {
-                    updates.Link_Patron = text;
-                    result.text = "🔗 Enlace guardado correctamente en tu ficha. ✨";
+            console.log("🔍 [DEBUG WORKFLOW] step recibido:", step);
+            try {
+                const updates = {};
+                let result = { text: "", isFinal: false };
+                if (step.includes("anote en la libreta")) {
+                    updates.Nombre_Real = text;
+                    result.text = "✅ ¡Nombre actualizado, primor! Ya aparece en tu ficha digital.";
                     result.isFinal = true;
-                } else {
-                    result.text = "⚠️ Eso no parece un enlace, cielo. Asegúrate de que empiece por http...";
-                    result.isFinal = false; // Le dejamos reintentar
                 }
+                else if (step.includes("proyecto")) {
+                    updates.Proyecto_Actual = text;
+                    result.text = "🧵 ¡Anotado! He actualizado el nombre de tu labor.";
+                    result.isFinal = true;
+                }
+                else if (step.includes("cuéntame los detalles")) {
+                    updates.Notas_Tecnicas = text;
+                    result.text = "📍 Notas técnicas guardadas. ¡Así no se te olvida ni un punto!";
+                    result.isFinal = true;
+                }
+                else if (step.includes("enlace/link de la web")) {
+                    if (text.startsWith("http")) {
+                        updates.Link_Patron = text;
+                        result.text = "🔗 Enlace guardado correctamente en tu ficha. ✨";
+                        result.isFinal = true;
+                    } else {
+                        result.text = "⚠️ Eso no parece un enlace, cielo. Asegúrate de que empiece por http...";
+                        result.isFinal = false;
+                    }
+                }
+                await airtableService.actualizarEstadoPedido(recordId, updates, 'academia');
+                return result;
+            } catch (e) {
+                console.error("💥 Error en handleAcademiaWorkflow:", e.message);
+                return { text: "⚠️ No he podido guardar ese dato. Inténtalo de nuevo.", isFinal: true };
             }
-        
-            // Persistencia en Airtable usando la tabla de Alumnas (TB-11) [cite: 88, 93]
-            await airtableService.actualizarEstadoPedido(recordId, updates, 'academia');
-            return result;
-        
-        } catch (e) {
-            console.error("💥 Error en obtenerClasesDisponibles:", e.message);
-            return [];
         }
         async inscribirAlumna(idInteresada, idClase) {
             try {
                 const interesada = await airtableService.base(airtableService.t.espera).find(idInteresada);
                 const clase = await airtableService.base(airtableService.t.clases).find(idClase);
-                
+
                 const nombre = interesada.fields.Nombre_Interesada;
                 const telefono = interesada.fields.Telefono;
                 const nombreClase = clase.fields.Nombre_Clase;
-    
-                // Creamos su Ficha de Alumna Privada (TB-11) [cite: 60]
-                await airtableService.base(airtableService.t.academia).create([{
-                    fields: {
-                        "Nombre_Real": nombre,
-                        "Telefono": telefono,
-                        "Clase_Asignada": nombreClase,
-                        "ID_Alumna_Unico": `#ALU-${telefono.slice(-4)}`
-                    }
-                }]);
-    
-                // Actualizamos su estado en la Lista de Espera a "Inscrita"
+
+                // Buscar si ya existe una alumna con el mismo teléfono en academia
+                const existentes = await airtableService.base(airtableService.t.academia).select({
+                    filterByFormula: `{Telefono} = '${telefono}'`
+                }).firstPage();
+
+                let idAlumna;
+                let esAlumnaExistente;
+
+                if (existentes && existentes.length > 0) {
+                    esAlumnaExistente = true;
+                    idAlumna = existentes[0].fields.ID_Alumna_Unico;
+                } else {
+                    esAlumnaExistente = false;
+                    idAlumna = await airtableService.generarSiguienteIDAlumna();
+                    await airtableService.base(airtableService.t.academia).create([{
+                        fields: {
+                            "Nombre_Real": nombre,
+                            "Telefono": telefono,
+                            "Clase_Asignada": nombreClase,
+                            "ID_Alumna_Unico": idAlumna
+                        }
+                    }]);
+                }
+
                 await airtableService.base(airtableService.t.espera).update(idInteresada, {
                     "Estado": "Inscrita"
                 });
-    
-                return `✨ **¡Inscripción completada!**\n**${nombre}** ya tiene su plaza en **${nombreClase}**.`;
+
+                return {
+                    nombre,
+                    nombreClase,
+                    idAlumna,
+                    telefono,
+                    esAlumnaExistente
+                };
             } catch (e) {
                 console.error("💥 Error en inscribirAlumna:", e.message);
                 throw e;
