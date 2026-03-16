@@ -35,6 +35,22 @@ class AirtableService {
             } catch (e) { this._logError(e, 'getConfigValue'); }
         }
 
+        async setConfigValue(clave, valor) {
+            try {
+                const records = await this.base(this.t.config).select({
+                    filterByFormula: `{Clave} = '${clave}'`,
+                    maxRecords: 1
+                }).firstPage();
+
+                if (records.length > 0) {
+                    await this.base(this.t.config).update(records[0].id, { "Valor": valor });
+                } else {
+                    await this.base(this.t.config).create([{ fields: { "Clave": clave, "Valor": valor } }]);
+                }
+                return true;
+            } catch (e) { this._logError(e, 'setConfigValue'); return false; }
+        }
+
         //TAREAS
         async crearTarea(descripcion, prioridad = "Media") {
             try {

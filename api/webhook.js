@@ -106,6 +106,108 @@ module.exports = async function handler(req, res) {
                 return res.status(200).json({ ok: true });
             }   
 
+            // MARKETING: Crear copy para Instagram
+            else if (data === "MKT_CREAR_COPY") {
+
+                const marketingHabilitado = await airtableService.getConfigValue('modulo_marketing') === 'true';
+                if (!marketingHabilitado) {
+                    await enviarMensajeSimple(chatId, "⭕ El módulo de marketing está desactivado. Actívalo con /modulos.");
+                    return res.status(200).json({ ok: true });
+                }
+                
+                const sesion = await airtableService.obtenerSesion(chatId);
+                
+                if (!sesion || !sesion.metadata || !sesion.metadata.urlFoto) {
+                    await enviarMensajeSimple(chatId, "⚠️ La sesión ha expirado. Vuelve a subir el trabajo para crear el copy.");
+                    return res.status(200).json({ ok: true });
+                }
+
+                const { urlFoto, nombreProyecto } = sesion.metadata;
+                
+                await enviarMensajeSimple(chatId, "✍️ *Escribiendo el copy...*");
+                
+                try {
+                    const marketingService = require('../services/marketingService');
+                    const copy = await marketingService.generarCopyTrabajo(urlFoto, nombreProyecto);
+                    
+                    await airtableService.borrarSesion(chatId);
+                    
+                    await enviarMensajeConBotones(
+                        chatId,
+                        `📲 *Copy para Instagram:*\n\n${copy}`,
+                        [[{ text: "🔄 Regenerar copy", callback_data: "MKT_REGEN_COPY" }]]
+                    );
+                } catch (e) {
+                    console.error("💥 Error generando copy:", e.message);
+                    await airtableService.borrarSesion(chatId);
+                    await enviarMensajeSimple(chatId, "⚠️ No he podido generar el copy ahora. Puedes pedirlo más tarde con /copy.");
+                }
+                
+                return res.status(200).json({ ok: true });
+            }
+
+            // MARKETING: Saltar creación de copy
+            else if (data === "MKT_SKIP") {
+                await airtableService.borrarSesion(chatId);
+                await enviarMensajeSimple(chatId, "👍 Perfecto. Cuando quieras crear el copy de cualquier trabajo, usa /copy.");
+                return res.status(200).json({ ok: true });
+            }
+
+            // MARKETING: Regenerar copy (misma foto, nuevo texto)
+            else if (data === "MKT_REGEN_COPY") {
+                const sesion = await airtableService.obtenerSesion(chatId);
+                
+                if (!sesion || !sesion.metadata || !sesion.metadata.urlFoto) {
+                    await enviarMensajeSimple(chatId, "⚠️ La sesión ha expirado. Vuelve a subir el trabajo para crear el copy.");
+                    return res.status(200).json({ ok: true });
+                }
+
+                const { urlFoto, nombreProyecto } = sesion.metadata;
+                
+                await enviarMensajeSimple(chatId, "✍️ *Generando otra versión...*");
+                
+                try {
+                    const marketingService = require('../services/marketingService');
+                    const copy = await marketingService.generarCopyTrabajo(urlFoto, nombreProyecto);
+                    
+                    await enviarMensajeConBotones(
+                        chatId,
+                        `📲 *Copy para Instagram:*\n\n${copy}`,
+                        [[{ text: "🔄 Regenerar copy", callback_data: "MKT_REGEN_COPY" }]]
+                    );
+                } catch (e) {
+                    console.error("💥 Error regenerando copy:", e.message);
+                    await enviarMensajeSimple(chatId, "⚠️ No he podido regenerar el copy. Inténtalo de nuevo.");
+                }
+                
+                return res.status(200).json({ ok: true });
+            }
+
+            // MÓDULOS: toggle encender/apagar
+            else if (data.startsWith("MOD_TOGGLE|")) {
+                const partes = data.split('|');
+                const clave = partes[1];
+                const estadoActual = partes[2] === 'true';
+                const nuevoEstado = !estadoActual;
+
+                await airtableService.setConfigValue(clave, String(nuevoEstado));
+
+                // Recargamos el panel actualizado
+                const marketingActivo = await airtableService.getConfigValue('modulo_marketing') === 'true';
+                const buenosDiasActivo = await airtableService.getConfigValue('modulo_buenos_dias') === 'true';
+                const chatbotActivo = await airtableService.getConfigValue('modulo_chatbot_admin') === 'true';
+
+                const texto = `⚙️ *Panel de Módulos*\n\n${nuevoEstado ? '✅ Activado' : '⭕ Desactivado'}: *${clave.replace('modulo_', '').replace('_', ' ')}*`;
+                const botones = [
+                    [{ text: `${marketingActivo ? '✅' : '⭕'} Marketing (copy Instagram)`, callback_data: `MOD_TOGGLE|modulo_marketing|${marketingActivo}` }],
+                    [{ text: `${buenosDiasActivo ? '✅' : '⭕'} Buenos días`, callback_data: `MOD_TOGGLE|modulo_buenos_dias|${buenosDiasActivo}` }],
+                    [{ text: `${chatbotActivo ? '✅' : '⭕'} Chatbot admin`, callback_data: `MOD_TOGGLE|modulo_chatbot_admin|${chatbotActivo}` }],
+                    [{ text: "🏠 Cerrar", callback_data: "CLI_INICIO" }]
+                ];
+                await enviarMensajeConBotones(chatId, texto, botones);
+                return res.status(200).json({ ok: true });
+            }
+
             // BOTONES DE FOTOS A INVENTARIO 🧹 FALTA LIMPIAR
 
             if (data.startsWith("FOTO_")) {
@@ -230,11 +332,22 @@ module.exports = async function handler(req, res) {
                         }
                     }]);
             
-                    await enviarMensajeSimple(chatId, `✅ **¡Proyecto archivado con éxito!**\n🌟 *${metadata.nombre}* ya está disponible en el catálogo de *${categoria}* para los clientes.`);
-                    
-                    // Limpiamos sesión
-                    await airtableService.borrarSesion(chatId);
-            
+                    // Guardamos la URL y el nombre en sesión ANTES de borrar
+                    // para que el handler de marketing pueda recuperarlos
+                    await airtableService.guardarSesion(chatId, "MKT_ESP_DECISION", {
+                        urlFoto: urlFinal,
+                        nombreProyecto: metadata.nombre,
+                        categoria: categoria
+                    });
+
+                    await enviarMensajeConBotones(
+                        chatId,
+                        `✅ *¡Proyecto archivado con éxito!*\n🌟 *${metadata.nombre}* ya está en el catálogo de *${categoria}*.\n\n¿Quieres que te escriba el copy para Instagram?`,
+                        [
+                            [{ text: "✨ Sí, crear copy", callback_data: "MKT_CREAR_COPY" }],
+                            [{ text: "No, gracias", callback_data: "MKT_SKIP" }]
+                        ]
+                    );
                 } catch (e) {
                     console.error("💥 Error guardando trabajo:", e.message);
                     await enviarMensajeSimple(chatId, "❌ Hubo un problema al guardar la foto en el archivador.");
@@ -1548,6 +1661,24 @@ module.exports = async function handler(req, res) {
                 }
                 
                 // G. Academia
+
+                // PANEL DE MÓDULOS — encender/apagar servicios de IA
+                if (textoMinus === "/modulos") {
+                    const marketingActivo = await airtableService.getConfigValue('modulo_marketing') === 'true';
+                    const buenosDiasActivo = await airtableService.getConfigValue('modulo_buenos_dias') === 'true';
+                    const chatbotActivo = await airtableService.getConfigValue('modulo_chatbot_admin') === 'true';
+
+                    const texto = `⚙️ *Panel de Módulos*\n\nEstado actual de los servicios de IA:`;
+                    const botones = [
+                        [{ text: `${marketingActivo ? '✅' : '⭕'} Marketing (copy Instagram)`, callback_data: `MOD_TOGGLE|modulo_marketing|${marketingActivo}` }],
+                        [{ text: `${buenosDiasActivo ? '✅' : '⭕'} Buenos días`, callback_data: `MOD_TOGGLE|modulo_buenos_dias|${buenosDiasActivo}` }],
+                        [{ text: `${chatbotActivo ? '✅' : '⭕'} Chatbot admin`, callback_data: `MOD_TOGGLE|modulo_chatbot_admin|${chatbotActivo}` }],
+                        [{ text: "🏠 Cerrar", callback_data: "CLI_INICIO" }]
+                    ];
+                    await enviarMensajeConBotones(chatId, texto, botones);
+                    return res.status(200).json({ ok: true });
+                
+                }
                 if (textoMinus === "academia" || textoMinus === "/clases") {
                     const botones = [
                         [{ text: "🧵 Gestionar Costura", callback_data: "ADM_CLASES|🧵Costura" }],
