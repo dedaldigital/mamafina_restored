@@ -181,7 +181,7 @@ No uses asteriscos para negritas. Escribe el texto tal cual se publicaría en In
     `.trim();
 
     const response = await getAI().models.generateContent({
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-2.5-flash',
         contents: [{
             role: 'user',
             parts: [
@@ -209,4 +209,87 @@ async function registrarTipoPost(recordId, tipoPost) {
     }
 }
 
-module.exports = { generarCopyTrabajo, sugerirTipoPost, obtenerTiposPost, registrarTipoPost };
+// Chatbot conversacional para admin con memoria de conversación
+async function chatAdmin(mensajeUsuario, historialPrevio = []) {
+    const sistemPrompt = `
+Eres el asistente inteligente de Mamafina, una mercería creativa en Madrid llevada por Reyes.
+Ya conoces el negocio perfectamente — no hagas preguntas sobre qué es o cómo funciona.
+
+Lo que sabes de Mamafina:
+- Es una mercería creativa en Madrid (barrio Arganzuela)
+- Reyes es la dueña y única trabajadora — hace todo ella sola
+- Vende telas, lanas, hilos y mercería general en tienda física
+- Hace encargos de personalización a mano: bolsos, neceseres, ropa, bordados y apliques textiles
+- Tiene una academia de costura y crochet con alumnas con ficha propia (#ALU-XXXX)
+- Los pedidos tienen número de referencia único (#REF)
+- Clientas habituales: mujeres 30-55 años apasionadas por la costura y la personalización
+- Horario tienda: Lun/Mar/Jue/Vie 10-14 y 17-20, Mié/Sáb 10-14, Dom cerrado
+- Canal principal de comunicación: Telegram para gestión interna, Instagram para marketing
+- El bot gestiona: inventario, pedidos, tareas, consultas de clientes, academia y marketing
+
+Comandos disponibles:
+- /pedidos — ver pedidos activos
+- /tareas — ver tareas pendientes
+- /stock — consultar inventario
+- /consultas — ver consultas de clientes pendientes
+- /visualizar — laboratorio de diseño con IA
+- /modulos — panel de módulos de IA
+
+Instrucciones de comportamiento:
+- Tutea siempre a Reyes, tono cercano, directo y con cariño
+- Ya sabes qué es Mamafina — nunca preguntes qué tipo de negocio es ni cómo funciona
+- Si te pregunta por datos en tiempo real (stock exacto, pedidos concretos), dile que use el comando correspondiente
+- Si te pide hacer algo que requiere un comando, sugiérele el comando exacto
+- Responde siempre en español
+- Máximo 3-4 líneas por respuesta, conciso
+- No uses asteriscos para negritas
+    `.trim();
+
+    // Construimos el historial para Gemini
+    const contents = [];
+
+    // Añadimos los mensajes previos
+    for (const msg of historialPrevio) {
+        contents.push({
+            role: msg.role,
+            parts: [{ text: msg.text }]
+        });
+    }
+
+    // Añadimos el mensaje actual
+    contents.push({
+        role: 'user',
+        parts: [{ text: mensajeUsuario }]
+    });
+
+    let response = null;
+    for (let intento = 1; intento <= 3; intento++) {
+        try {
+            response = await getAI().models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: [{
+                    role: 'user',
+                    parts: [{ text: sistemPrompt + '\n\nMensaje de Reyes: ' + mensajeUsuario }]
+                },
+                ...historialPrevio.slice(1).map(m => ({
+                    role: m.role,
+                    parts: [{ text: m.text }]
+                }))
+                ]
+            });
+            break;
+        } catch (e) {
+            console.error('💥 Intento ' + intento + ' fallido:', e.message);
+            if (intento < 3) await new Promise(r => setTimeout(r, 1000 * intento));
+            else throw e;
+        }
+    }
+
+    if (!response?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        throw new Error('Gemini no devolvió respuesta.');
+    }
+
+    return response.candidates[0].content.parts[0].text.trim();
+}
+
+module.exports = { generarCopyTrabajo, sugerirTipoPost, obtenerTiposPost, registrarTipoPost, chatAdmin };

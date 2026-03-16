@@ -1309,7 +1309,7 @@ module.exports = async function handler(req, res) {
             }
 
             // 4. FLUJOS BASADOS EN METADATOS (Formularios)
-            if (paso) {
+            if (paso && !paso.startsWith("MKT_")) {
                 // A. Buscar ficha por ID de alumna (ESP_ID_ALUMNA)
                 if (paso === "ESP_ID_ALUMNA") {
                     const idTexto = textoRecibido.trim();
@@ -1556,6 +1556,13 @@ module.exports = async function handler(req, res) {
 
                    
                 //7. COMANDOS DIRECTOS
+                
+                if (textoMinus.startsWith("/") && textoMinus !== "/start") {
+                    const sesionActual = await airtableService.obtenerSesion(chatId);
+                    if (sesionActual?.step === 'CHAT_ADMIN') {
+                        await airtableService.borrarSesion(chatId);
+                    }
+                }
                     
                 // A. Whatsapp directo
                 if (textoMinus.startsWith("wa:")) {
@@ -1779,11 +1786,48 @@ module.exports = async function handler(req, res) {
                 }
 
                 // Si es un Admin y escribe algo que no reconoce, la IA responde (cajón de sastre) 🫧 LIMPIO
+                // Cajón de sastre — chatbot conversacional con Gemini y memoria
                 if (!esRespuesta && !textoMinus.startsWith("/")) {
-                    const respuestaIA = await openaiService.generarRespuesta(textoRecibido);
-                    await enviarMensajeSimple(chatId, respuestaIA);
+                    try {
+                        const marketingService = require('../services/marketingService');
+
+                        // Recuperamos el historial de conversación de la sesión (solo si es reciente)
+                        const sesionChat = await airtableService.obtenerSesion(chatId);
+                        const ultimoMensaje = sesionChat?.metadata?.ultimoMensaje || 0;
+                        const hanPasado = Date.now() - ultimoMensaje;
+                        const historialPrevio = (hanPasado < 4 * 60 * 60 * 1000) ? (sesionChat?.metadata?.historialChat || []) : [];
+
+                        // Llamamos a Gemini con el historial
+                        const respuestaGemini = await marketingService.chatAdmin(textoRecibido, historialPrevio);
+
+                        // Actualizamos el historial — añadimos el mensaje del usuario y la respuesta
+                        const historialActualizado = [
+                            ...historialPrevio,
+                            { role: 'user', text: textoRecibido },
+                            { role: 'model', text: respuestaGemini }
+                        ].slice(-6); // Mantenemos solo los últimos 6 mensajes (3 intercambios)
+
+                        // Guardamos el historial en sesión sin pisar otros pasos activos
+                        // Solo guardamos si no hay una sesión de otro flujo activa
+                        if (!sesionChat || !sesionChat.step || sesionChat.step === 'CHAT_ADMIN') {
+                            await airtableService.guardarSesion(chatId, 'CHAT_ADMIN', {
+                                historialChat: historialActualizado,
+                                ultimoMensaje: Date.now()
+                            });
+                        }
+
+                        const textoLimpio = respuestaGemini.replace(/\*\*/g, '').replace(/\*/g, '').replace(/#{1,6} /g, '').replace(/`/g, '');
+                        await fetch("https://api.telegram.org/bot" + process.env.TELEGRAM_TOKEN + "/sendMessage", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ chat_id: chatId, text: textoLimpio })
+                        });
+                    } catch (e) {
+                        console.error("💥 Error en chatbot admin:", e.message);
+                        await enviarMensajeSimple(chatId, "⚠️ No he podido procesar eso. Inténtalo de nuevo.");
+                    }
                     return res.status(200).json({ ok: true });
-                }  
+                } 
        
                 }//Cierre try esrespuestas
             
