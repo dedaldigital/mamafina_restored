@@ -1,5 +1,5 @@
 const airtableService = require('./airtableService');
-const openaiService = require('./openaiService');
+const geminiService = require('./geminiService');
 const imgbbService = require('./imgbbService');
 
 class StudioService {
@@ -28,41 +28,51 @@ class StudioService {
 
         if (!producto || !borrador) throw new Error("Datos no encontrados.");
 
-        const descProdIA = producto.fields.Prompt_Final || "a plain white garment";
-        let descTelaIA = borrador.fields.Prompt_Tela_Lookup;
+        // Obtener URL de la foto del producto
+        const urlFotoProducto = producto.fields.Foto || null;
 
-        if (!descTelaIA && borrador.fields.Tela_Relacionada) {
-            const idTela = borrador.fields.Tela_Relacionada[0];
+        // Obtener URL de la foto de la tela relacionada
+        let urlFotoTela = null;
+        const relacionTela = borrador.fields.Tela_Relacionada;
+
+        if (Array.isArray(relacionTela) && relacionTela[0]) {
+            const idTela = relacionTela[0];
             const registroTela = await airtableService.base(airtableService.t.telas).find(idTela);
-            descTelaIA = registroTela.fields.Prompt_Final;
+
+            urlFotoTela = registroTela && registroTela.fields && registroTela.fields.Foto
+                ? registroTela.fields.Foto
+                : null;
         }
-        descTelaIA = descTelaIA || "minimalist repeating pattern";
 
-        const promptMaestro = `
-Isolated ecommerce product photo of ${descProdIA} on a pure white (#FFFFFF) seamless background.
-Perfect straight front view. 
-The product is centered and fully visible.
-Clean cutout-style product image with only the product visible.
-On the center of the product there is a small appliqué letter "R".
-The letter occupies about one third of the product width.
-The letter "R" itself is a piece of fabric cut exactly in the shape of the letter.
-The fabric is cut following the exact outline of the letter.
-There is NO square patch.
-There is NO rectangular patch.
-There is NO fabric panel behind the letter.
-The letter is made from printed fabric with this exact visual identity: ${descTelaIA}.
-The printed pattern appears only inside the shape of the letter.
-The letter is sewn directly onto the product with zigzag satin stitching following the outer contour of the letter.
-Minimalist ecommerce catalog image.
-`.trim();
+        if (!urlFotoTela && !urlFotoProducto) {
+            throw new Error("Faltan las fotos de tela y producto para generar el diseño.");
+        }
 
-        const imgTmp = await openaiService.generarImagenDiseno(promptMaestro);
-        if (!imgTmp) throw new Error("No se pudo generar la imagen.");
-        const urlFinal = await imgbbService.subirAFotoUsuario(imgTmp) || imgTmp;
+        if (!urlFotoTela) {
+            throw new Error("Falta la foto de la tela (campo 'Foto' en el registro de tela relacionado).");
+        }
 
+        if (!urlFotoProducto) {
+            throw new Error("Falta la foto del producto (campo 'Foto' en el registro de producto).");
+        }
+
+        // Llamar a Gemini para generar la imagen a partir de las dos fotos
+        const base64Generado = await geminiService.generarDiseno(urlFotoTela, urlFotoProducto, "R");
+
+        if (!base64Generado) {
+            throw new Error("No se pudo generar la imagen con Gemini.");
+        }
+
+        // Subir el base64 a ImgBB
+        const urlFinal = await imgbbService.subirBase64(base64Generado);
+
+        if (!urlFinal) {
+            throw new Error("No se pudo subir la imagen generada a ImgBB.");
+        }
+
+        // Guardar en Airtable
         await airtableService.base(airtableService.t.disenos).update(borrador.id, {
-            "Imagen_Generada": urlFinal,
-            "Prompt_Final": promptMaestro
+            "Imagen_Generada": urlFinal
         });
 
         return { urlFinal, borradorId: borrador.id, idProducto };
@@ -76,47 +86,51 @@ Minimalist ecommerce catalog image.
 
         if (!borradorValido || !productoValido) throw new Error("No encontré los registros en Airtable");
 
-        let promptMaestro;
+        // Obtener URL de la foto del producto (siempre desde el registro actual)
+        const urlFotoProducto = productoValido.fields.Foto || null;
 
-        if (borradorValido.fields.Prompt_Final) {
-            promptMaestro = borradorValido.fields.Prompt_Final;
-        } else {
-            const descProdIA = productoValido.fields.Prompt_Final || "a plain white garment";
-            let descTelaIA = borradorValido.fields.Prompt_Tela_Lookup;
+        // Obtener URL de la foto de la tela relacionada (siempre desde el registro actual)
+        let urlFotoTela = null;
+        const relacionTela = borradorValido.fields.Tela_Relacionada;
 
-            if (!descTelaIA && borradorValido.fields.Tela_Relacionada) {
-                const idTela = borradorValido.fields.Tela_Relacionada[0];
-                const registroTela = await airtableService.base(airtableService.t.telas).find(idTela);
-                descTelaIA = registroTela.fields.Prompt_Final;
-            }
-            descTelaIA = descTelaIA || "minimalist repeating pattern";
+        if (Array.isArray(relacionTela) && relacionTela[0]) {
+            const idTela = relacionTela[0];
+            const registroTela = await airtableService.base(airtableService.t.telas).find(idTela);
 
-            promptMaestro = `
-Isolated ecommerce product photo of ${descProdIA} on a pure white (#FFFFFF) seamless background.
-Perfect straight front view. 
-The product is centered and fully visible.
-Clean cutout-style product image with only the product visible.
-On the center of the product there is a small appliqué letter "R".
-The letter occupies about one third of the product width.
-The letter "R" itself is a piece of fabric cut exactly in the shape of the letter.
-The fabric is cut following the exact outline of the letter.
-There is NO square patch.
-There is NO rectangular patch.
-There is NO fabric panel behind the letter.
-The letter is made from printed fabric with this exact visual identity: ${descTelaIA}.
-The printed pattern appears only inside the shape of the letter.
-The letter is sewn directly onto the product with zigzag satin stitching following the outer contour of the letter.
-Minimalist ecommerce catalog image.
-`.trim();
+            urlFotoTela = registroTela && registroTela.fields && registroTela.fields.Foto
+                ? registroTela.fields.Foto
+                : null;
         }
 
-        const img = await openaiService.generarImagenDiseno(promptMaestro);
-        if (!img) throw new Error("No se pudo generar la imagen.");
-        const urlFinal = await imgbbService.subirAFotoUsuario(img) || img;
+        if (!urlFotoTela && !urlFotoProducto) {
+            throw new Error("Faltan las fotos de tela y producto para regenerar el diseño.");
+        }
 
+        if (!urlFotoTela) {
+            throw new Error("Falta la foto de la tela (campo 'Foto' en el registro de tela relacionado).");
+        }
+
+        if (!urlFotoProducto) {
+            throw new Error("Falta la foto del producto (campo 'Foto' en el registro de producto).");
+        }
+
+        // Llamar a Gemini para generar la nueva imagen
+        const base64Generado = await geminiService.generarDiseno(urlFotoTela, urlFotoProducto, "R");
+
+        if (!base64Generado) {
+            throw new Error("No se pudo generar la imagen con Gemini.");
+        }
+
+        // Subir a ImgBB
+        const urlFinal = await imgbbService.subirBase64(base64Generado);
+
+        if (!urlFinal) {
+            throw new Error("No se pudo subir la imagen generada a ImgBB.");
+        }
+
+        // Guardar en Airtable (ya no guardamos Prompt_Final)
         await airtableService.base(airtableService.t.disenos).update(borradorValido.id, {
-            "Imagen_Generada": urlFinal,
-            "Prompt_Final": promptMaestro
+            "Imagen_Generada": urlFinal
         });
 
         return { urlFinal, idBorrador, idProducto };

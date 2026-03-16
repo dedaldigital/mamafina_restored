@@ -4,6 +4,7 @@
   "description": "Ecosistema automatizado para Mercería Mamafina",
   "main": "api/webhook.js",
   "dependencies": {
+    "@google/genai": "^1.45.0",
     "@google/generative-ai": "^0.1.0",
     "airtable": "^0.12.2",
     "axios": "^1.13.6",
